@@ -1,0 +1,8 @@
+﻿streamlit>=1.40
+pandas>=2.2
+numpy>=1.26
+scipy>=1.12
+plotly>=5.20
+requests>=2.32
+beautifulsoup4>=4.12
+pypdf>=5.0

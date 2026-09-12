@@ -1,0 +1,29 @@
+{
+    "metadata": {
+        "source": "Central Bank of Kenya",
+        "description": "Kenyan Treasury Bill previous average interest rates",
+        "retrieved_date": "2026-08-26",
+        "status": "Official CBK published data"
+    },
+    "treasury_bills": {
+        "91": {
+            "name": "91-Day Treasury Bill",
+            "days": 91,
+            "rate": 0.0877,
+            "source": "Central Bank of Kenya"
+        },
+        "182": {
+            "name": "182-Day Treasury Bill",
+            "days": 182,
+            "rate": 0.08948,
+            "source": "Central Bank of Kenya"
+        },
+        "364": {
+            "name": "364-Day Treasury Bill",
+            "days": 364,
+            "rate": 0.090365,
+            "source": "Central Bank of Kenya"
+        }
+    },
+    "historical_data": []
+}

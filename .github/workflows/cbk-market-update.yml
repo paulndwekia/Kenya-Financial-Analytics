@@ -1,0 +1,56 @@
+﻿name: CBK Market Data Update
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "15 18 * * *"
+      timezone: "Africa/Nairobi"
+
+permissions:
+  contents: write
+
+jobs:
+  update-cbk-data:
+
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install updater dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas requests beautifulsoup4 pypdf
+
+      - name: Run CBK updater
+        run: |
+          python cbk_auto_update.py
+
+      - name: Configure Git
+        run: |
+          git config user.name "KFA CBK Updater"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit updated market data
+        run: |
+          git add kenya_financial_analytics.db
+          git add kenya_market.db
+          git add cbk_auto_update_status.json
+          git add cbk_auto_update.log
+
+          if git diff --cached --quiet; then
+            echo "No new CBK data to commit."
+          else
+            git commit -m "chore: update CBK market data"
+            git push
+          fi
