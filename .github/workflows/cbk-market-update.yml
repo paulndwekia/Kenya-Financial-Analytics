@@ -2,7 +2,6 @@
 
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "15 18 * * *"
       timezone: "Africa/Nairobi"
@@ -12,11 +11,9 @@ permissions:
 
 jobs:
   update-cbk-data:
-
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -46,7 +43,6 @@ jobs:
           git add kenya_financial_analytics.db
           git add kenya_market.db
           git add cbk_auto_update_status.json
-          git add cbk_auto_update.log
 
           if git diff --cached --quiet; then
             echo "No new CBK data to commit."
