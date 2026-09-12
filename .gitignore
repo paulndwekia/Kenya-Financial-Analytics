@@ -26,3 +26,6 @@ harden_*.py
 import_cbk_fx_history.py
 
 .git/
+
+# Large archive files
+*.zip
