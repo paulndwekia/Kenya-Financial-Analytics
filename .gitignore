@@ -29,3 +29,23 @@ import_cbk_fx_history.py
 
 # Large archive files
 *.zip
+
+# Non-production project artifacts
+*.zip
+*_backup_*.db
+*_WORKING_*.db
+*before_*.db
+*before_*.py
+repair_*.py
+diagnose_*.py
+fix_*.py
+apply_*.py
+sync_*.py
+harden_*.py
+final_audit.py
+production_cleanup.py
+exact_market_test.py
+import_cbk_fx_history.py
+cbk_downloads/
+cbk_fx_bulletins/
+*.log
