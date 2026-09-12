@@ -49,3 +49,42 @@ import_cbk_fx_history.py
 cbk_downloads/
 cbk_fx_bulletins/
 *.log
+# Python / virtual environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Development backups
+app_*WORKING*.py
+app_*BACKUP*.py
+app_backup.py
+live_data_*WORKING*.py
+*_backup_*.db
+*_WORKING_*.db
+*before_*.db
+*before_*.py
+
+# Old / temporary project folders
+LIVE_BACKUP_*/
+_CLEANUP_ARCHIVE_*/
+build/
+dist/
+new_desktop_package/
+cbk_historical_pdfs/
+
+# Old dashboard / launchers
+dashboard.py
+RESTORE_FINANCIAL_ANALYTICS.bat
+RUN_KENYA_FINANCIAL_ANALYTICS.bat
+START_KENYA_FINANCIAL_ANALYTICS.bat
+
+# Archives
+*.zip
+*.7z
+*.rar
+
+# Logs / local downloads
+*.log
+cbk_downloads/
+cbk_fx_bulletins/
