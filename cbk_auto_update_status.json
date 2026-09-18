@@ -1,12 +1,12 @@
 {
   "status": "SUCCESS",
-  "last_attempt": "2026-09-17T19:01:47",
+  "last_attempt": "2026-09-18T18:27:04",
   "details": {
     "fx_source": "CBK Weekly Bulletins",
     "fx_bulletins_processed": 4,
     "fx_observations_seen": 120,
-    "fx_added": 0,
-    "fx_updated": 75,
+    "fx_added": 15,
+    "fx_updated": 60,
     "tbill_importer": false,
     "tbill_synced": 54
   }
