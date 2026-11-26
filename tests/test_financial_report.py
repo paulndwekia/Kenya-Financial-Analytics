@@ -63,12 +63,14 @@ class FinancialReportTests(unittest.TestCase):
         output = build_workbook(self.fx, self.bills, self.refresh)
         with zipfile.ZipFile(io.BytesIO(output)) as archive:
             shared_strings = archive.read("xl/sharedStrings.xml").decode("utf-8")
-            bills_xml = archive.read("xl/worksheets/sheet3.xml").decode("utf-8")
+            bills_xml = archive.read("xl/worksheets/sheet4.xml").decode("utf-8")
             self.assertIn("USD/KES", shared_strings)
             self.assertIn("GBP/KES", shared_strings)
             self.assertIn("EUR/KES", shared_strings)
             self.assertIn("2709/91", shared_strings)
-            self.assertIn(">182<", bills_xml)
+            self.assertIn("2709/182", shared_strings)
+            self.assertIn("2709/364", shared_strings)
+            self.assertGreater(bills_xml.count("<row"), 6)
 
 
 if __name__ == "__main__":
