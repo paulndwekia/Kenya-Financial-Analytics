@@ -9,7 +9,7 @@ import {
 
 test("Treasury bill investment-yield price uses a 365-day year",()=>{
   const p=treasuryBillPrice(100000,.09,91);
-  assert.ok(Math.abs(p-97827.80)<.1);
+  assert.ok(Math.abs(p-97805.41)<.1);
 });
 test("Treasury bill discount and investment yield are distinct conventions",()=>{
   const investment=treasuryBillPrice(100000,.09,91);
@@ -47,7 +47,7 @@ test("Historical and parametric VaR and expected shortfall are non-negative",()=
 test("Yield-curve shape, slopes and interpolation use only supplied points",()=>{
   const rates={91:.087,182:.088,364:.09};
   assert.equal(classifyYieldCurve(rates),"UPWARD SLOPING");
-  assert.ok(Math.abs(yieldCurveSlopes(rates).91_to_182-.001)<1e-12);
+  assert.ok(Math.abs(yieldCurveSlopes(rates)["91_to_182"]-.001)<1e-12);
   assert.ok(Math.abs(interpolateYield(136.5,rates)-.0875)<1e-12);
   assert.equal(classifyYieldCurve({91:.087}),"INSUFFICIENT DATA");
 });
