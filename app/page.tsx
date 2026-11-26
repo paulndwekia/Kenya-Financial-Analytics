@@ -136,7 +136,7 @@ function ModuleView({name,data,fx,loading,error}:{name:string;data:Payload|null;
    </section>
    {name==="Treasury Bills"&&<section className="panel"><div className="panel-head"><div><div className="panel-title">Treasury bill purchase-price calculator</div><div className="panel-note">Investment-yield convention documented in the retained pricing engine · 365-day basis</div></div><span className="eyebrow">KES</span></div>
     <div className="metric-grid" style={{gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))"}}><Field label="Face value (KES)" value={billFace} onChange={setBillFace}/><Field label="Annual yield (%)" value={billYield} onChange={setBillYield}/><Field label="Tenor (days)" value={days} onChange={setDays}/></div>
-    <div className="metric-grid"><Result label="Estimated purchase price" value={fmt(billPrice)}/><Result label="Discount to face" value={fmt(faceValue-billPrice)}/><Result label="Holding-period return" value={faceValue>0?(((faceValue-billPrice)/billPrice)*100).toFixed(3)+"%":"—"}/></div>
+    <div className="metric-grid"><Result label="Estimated purchase price" value={fmt(billPrice)}/><Result label="Discount to face" value={fmt(n(billFace)-billPrice)}/><Result label="Holding-period return" value={n(billFace)>0?(((n(billFace)-billPrice)/billPrice)*100).toFixed(3)+"%":"—"}/></div>
     <p className="panel-note">This is a calculator, not an auction quote. Confirm the actual accepted yield, settlement date, tax and applicable CBK terms before using the result.</p>
    </section>}
   </div>;
