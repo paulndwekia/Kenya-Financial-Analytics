@@ -250,9 +250,11 @@ test("historical explorer filters and exports the displayed data", async ({ page
 
 test("stress scenarios reject impossible values and recalculate valid shocks", async ({ page }) => {
   await page.goto("/?module=Stress%20Testing");
-  await expect(page.getByText("Capital shock scenarios")).toBeVisible();
-  await page.getByLabel("Selected FX shock (%)").fill("-100");
-  await expect(page.getByText(/Use positive capital and bond value/)).toBeVisible();
-  await page.getByLabel("Selected FX shock (%)").fill("-15");
+  await expect(page.getByText("Capital market shock")).toBeVisible();
+  await expect(page.getByText("CBK rate scenarios")).toBeVisible();
+  await expect(page.getByText("Yield-curve shape scenarios")).toBeVisible();
+  await page.getByLabel("Market shock (%)").fill("-100");
+  await expect(page.getByText(/Use a positive reference value and a market shock/)).toBeVisible();
+  await page.getByLabel("Market shock (%)").fill("-15");
   await expect(page.getByText("Stressed value")).toBeVisible();
 });
