@@ -527,13 +527,23 @@ function BondPricing(){
   const [marketPrice,setMarketPrice]=useState("95000"),[shockBps,setShockBps]=useState("100");
   const f=Number(face),c=Number(coupon)/100,y=Number(ytm)/100,n=Number(frequency),t=Number(years);
   const observedPrice=Number(marketPrice),dy=Number(shockBps)/10000;
-  const valid=[f,c,y,n,t].every(Number.isFinite)&&f>0&&c>=0&&c<=1&&y>-1&&y<=1&&t>0&&t<=100&&[1,2,4].includes(n)&&Math.round(t*n)>=1;
+  const exactPeriodCount=t*n,roundedPeriodCount=Math.round(exactPeriodCount);
+  const scheduleAligned=Number.isFinite(exactPeriodCount)&&Math.abs(exactPeriodCount-roundedPeriodCount)<1e-8;
+  const valid=[f,c,y,n,t].every(Number.isFinite)&&f>0&&c>=0&&c<=1&&y>-1&&y<=1&&t>0&&t<=100&&[1,2,4].includes(n)&&roundedPeriodCount>=1&&scheduleAligned;
   const marketPriceValid=Number.isFinite(observedPrice)&&observedPrice>0;
   const shockValid=Number.isFinite(dy)&&Math.abs(Number(shockBps))<=5000;
-  const periods=valid?Math.max(1,Math.round(t*n)):0;
+  const periods=valid?roundedPeriodCount:0;
   const model=valid?bondMetrics(f,c,y,t,n):null;
   const price=model?.price||0,macaulay=model?.macaulay_duration||0,modified=model?.modified_duration||0,convexity=model?.convexity||0;
   const flows=valid?bondCashFlows(f,c,t,n).map(row=>({...row,pv:row.cash_flow/Math.pow(1+y/n,row.period)})):[];
+  const annualFlows=valid?Array.from({length:Math.ceil(t)},(_,index)=>({year:"Year "+(index+1),coupon:0,redemption:0})): [];
+  if(valid){
+    for(const row of flows){
+      const yearIndex=Math.min(annualFlows.length-1,Math.max(0,Math.floor(row.time-1e-10)));
+      annualFlows[yearIndex].coupon+=f*c/n;
+      if(row.period===periods)annualFlows[yearIndex].redemption=f;
+    }
+  }
   const priceAt=(yieldRate:number)=>bondPrice(f,c,yieldRate,t,n);
   const minPrice=valid?priceAt(2.0):0,maxPrice=valid?priceAt(-.99):0;
   const ytmValid=valid&&marketPriceValid&&observedPrice>=minPrice&&observedPrice<=maxPrice;
@@ -542,49 +552,82 @@ function BondPricing(){
   const estimatedChange=sensitivity?sensitivity.estimated_change_percent/100:0;
   const shockedPrice=sensitivity?.estimated_price||0;
   const sensitivityValid=!!sensitivity&&Number.isFinite(shockedPrice)&&shockedPrice>0;
-  return <div className="workspace-stack">
-    <Panel title="Fixed-rate bond valuation" note="Periodic coupon discounting with the original annual, semi-annual and quarterly payment frequencies">
-      <div className="metric-grid"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual coupon rate (%)" value={coupon} onChange={setCoupon} min="0" max="100"/><Field label="Yield to maturity (%)" value={ytm} onChange={setYtm} min="-99" max="100"/><Field label="Years to maturity" value={years} onChange={setYears} min="0.01" max="100"/><label className="field"><span>Payments per year</span><select className="search" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="1">Annual</option><option value="2">Semi-annual</option><option value="4">Quarterly</option></select></label></div>
-      {valid?<div className="metric-grid"><Metric label="Model bond price" value={money(price)} note={price>f?"Premium to par":price<f?"Discount to par":"At par"}/><Metric label="Macaulay duration" value={macaulay.toFixed(4)+" years"}/><Metric label="Modified duration" value={modified.toFixed(4)}/><Metric label="Convexity" value={convexity.toFixed(4)}/></div>:<NoData message="Enter finite, valid face value, coupon, yield, maturity and payment frequency values."/>}
-      <p className="panel-note">This is a periodic fixed-coupon model. Accrued interest, settlement date, day-count, embedded options, taxes and transaction costs are not included.</p>
-    </Panel>
-    <Panel title="Yield to maturity solver" note="Finds the annual yield that equates the model cash flows to an observed market price">
-      <div className="metric-grid"><Field label="Observed market price (KES)" value={marketPrice} onChange={setMarketPrice} min="0.01"/></div>
-      {ytmValid?<div className="metric-grid"><Metric label="Implied yield to maturity" value={pct(impliedYtm!,4)}/><Metric label="Re-priced value" value={money(priceAt(impliedYtm!))}/><Metric label="Market price entered" value={money(observedPrice)}/></div>:<NoData message={valid?"The entered market price is outside this solver's supported yield bracket (−99% to 200%).":"Enter valid bond terms before solving for yield."}/>}
-    </Panel>
-    <Panel title="Duration and convexity price sensitivity" note="Second-order approximation for a parallel yield shock">
-      <div className="metric-grid"><Field label="Yield change (basis points)" value={shockBps} onChange={setShockBps} min="-5000" max="5000"/></div>
-      {sensitivityValid?<div className="metric-grid"><Metric label="Estimated percentage change" value={pct(estimatedChange)}/><Metric label="Current model price" value={money(price)}/><Metric label="Estimated shocked price" value={money(shockedPrice)}/><Metric label="Estimated price change" value={money(shockedPrice-price)}/></div>:<NoData message="The selected shock produces an invalid estimated price. Check the yield and shock inputs."/>}
-    </Panel>
-    <Panel title="Scheduled coupon and redemption cash flows" note={periods+" payment periods · full schedule, not a sample"}>
-      {valid?<Table headers={["Period","Time (years)","Coupon / redemption cash flow","Present value"]} rows={flows.map(row=>[row.period,row.time.toFixed(2),money(row.cash_flow),money(row.pv)])}/>:<NoData message="Valid bond inputs are required to calculate the cash-flow schedule."/>}
+  const curveHalfRange=Math.max(.025,Math.abs(y)*.35);
+  const curveMinYield=valid?Math.max(-.99,y-curveHalfRange):0;
+  const curveMaxYield=valid?Math.min(2,y+curveHalfRange):0;
+  const priceYieldData=valid?Array.from({length:27},(_,index)=>{
+    const yieldRate=curveMinYield+(curveMaxYield-curveMinYield)*index/26;
+    const change=yieldRate-y;
+    const approximation=price*(1-modified*change+.5*convexity*change*change);
+    return {yield:(yieldRate*100).toFixed(1),price:priceAt(yieldRate),durationApproximation:approximation>0?approximation:null};
+  }):[];
+
+  return <div className="workspace-stack bond-pricing-workspace">
+    <Panel title="Fixed-rate bond valuation" note="Periodic coupon discounting; choose the payment frequency that matches the bond contract">
+      <div className="bond-input-grid">
+        <Field label="Face value (KES)" value={face} onChange={setFace} min="1"/>
+        <Field label="Annual coupon rate (%)" value={coupon} onChange={setCoupon} min="0" max="100"/>
+        <Field label="Yield to maturity (%)" value={ytm} onChange={setYtm} min="-99" max="100"/>
+        <Field label="Years to maturity" value={years} onChange={setYears} min="0.01" max="100"/>
+        <label className="field"><span>Payments per year</span><select className="search" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="1">Annual</option><option value="2">Semi-annual</option><option value="4">Quarterly</option></select></label>
+      </div>
+      {valid?<div className="metric-grid">
+        <Metric label="Model bond price" value={money(price)} note={price>f?"Premium to par":price<f?"Discount to par":"At par"}/>
+        <Metric label="Macaulay duration" value={macaulay.toFixed(4)+" years"}/>
+        <Metric label="Modified duration" value={modified.toFixed(4)}/>
+        <Metric label="Convexity" value={convexity.toFixed(4)}/>
+      </div>:<NoData message={scheduleAligned?"Enter finite face value, coupon, yield, maturity and payment frequency values within the supported ranges.":"Maturity must be an exact multiple of the selected coupon period. For example, 5 years × 2 payments per year = 10 periods."}/>}
+      <p className="panel-note">This is a regular-period fixed-coupon model. Accrued interest, settlement date, day-count, embedded options, taxes and transaction costs are not included.</p>
     </Panel>
 
-    <Panel title="Bond price across yield scenarios" note="Full revaluation of the model cash flows at a range of annual yields">
-      {valid?<ChartFrame height={260} className="bond-price-chart"><ResponsiveContainer><LineChart data={Array.from({length:26},(_,i)=>{const yieldRate=i/100;return {yield:(yieldRate*100).toFixed(1),price:bondPrice(f,c,yieldRate,t,n)};})} margin={{top:10,right:12,bottom:4,left:2}}>
+    <Panel title="Yield to maturity solver" note="Finds the annual yield that equates the model cash flows to an observed market price">
+      <div className="metric-grid"><Field label="Observed market price (KES)" value={marketPrice} onChange={setMarketPrice} min="0.01"/></div>
+      {ytmValid?<div className="metric-grid">
+        <Metric label="Implied yield to maturity" value={pct(impliedYtm!,4)}/>
+        <Metric label="Re-priced value" value={money(priceAt(impliedYtm!))}/>
+        <Metric label="Market price entered" value={money(observedPrice)}/>
+      </div>:<NoData message={valid?"The entered market price is outside this solver's supported yield bracket (−99% to 200%).":"Enter valid bond terms before solving for yield."}/>}
+    </Panel>
+
+    <Panel title="Duration and convexity price sensitivity" note="Second-order approximation around the selected yield; shock is measured in basis points">
+      <div className="metric-grid"><Field label="Yield change (basis points)" value={shockBps} onChange={setShockBps} min="-5000" max="5000"/></div>
+      {sensitivityValid?<div className="metric-grid">
+        <Metric label="Estimated percentage change" value={pct(estimatedChange)}/>
+        <Metric label="Current model price" value={money(price)}/>
+        <Metric label="Estimated shocked price" value={money(shockedPrice)}/>
+        <Metric label="Estimated price change" value={money(shockedPrice-price)}/>
+      </div>:<NoData message="The selected shock produces an invalid estimated price. Check the yield and shock inputs."/>}
+    </Panel>
+
+    <Panel title="Scheduled coupon and redemption cash flows" note={periods+" payment periods · exact maturity schedule"}>
+      {valid?<div className="bond-cashflow-table"><Table headers={["Period","Time (years)","Coupon / redemption cash flow","Present value at YTM"]} rows={flows.map(row=>[row.period,row.time.toFixed(3),money(row.cash_flow),money(row.pv)])}/></div>:<NoData message="A valid, frequency-aligned bond schedule is required."/>}
+    </Panel>
+
+    <Panel title="Bond price across yield scenarios" note="Full revaluation compared with the duration–convexity approximation">
+      {valid?<ChartFrame height={285} className="bond-price-chart"><ResponsiveContainer><LineChart data={priceYieldData} margin={{top:10,right:14,bottom:4,left:4}}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
         <XAxis dataKey="yield" tick={{fontSize:10,fill:"#8291a0"}} unit="%"/>
-        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={68} tickFormatter={value=>money(Number(value))}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={78} tickFormatter={value=>money(Number(value))}/>
         <Tooltip formatter={(value)=>money(Number(value))} labelFormatter={label=>"Yield to maturity: "+String(label)+"%"} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/>
         <ReferenceLine x={(y*100).toFixed(1)} stroke="#d5a43b" strokeDasharray="4 4" label={{value:"Current YTM",position:"insideTopRight",fill:"#a27a24",fontSize:10}}/>
-        <Line dataKey="price" name="Bond price" stroke="#356bb3" strokeWidth={2.4} dot={false} activeDot={{r:4}}/>
-      </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="Valid bond terms are required before drawing the price–yield relationship."/>}
-      <p className="panel-note">The graph shows the inverse price–yield relationship for this bond's coupon and maturity. It reprices the cash flows at each point rather than applying the duration approximation.</p>
+        <Line dataKey="price" name="Full bond revaluation" stroke="#356bb3" strokeWidth={2.4} dot={false} activeDot={{r:4}}/>
+        <Line dataKey="durationApproximation" name="Duration–convexity estimate" stroke="#d5a43b" strokeWidth={1.8} strokeDasharray="5 4" dot={false}/>
+      </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="Valid, frequency-aligned bond terms are required before drawing the price–yield relationship."/>}
+      <p className="panel-note">The solid line reprices all contractual cash flows. The dashed line uses modified duration and convexity around the selected yield. The two may diverge for larger yield shocks.</p>
     </Panel>
-    <Panel title="Coupon and redemption profile" note="Cash-flow size by payment period, with principal redemption included at maturity">
-      {valid?<ChartFrame height={240} className="bond-cashflow-chart"><ResponsiveContainer><BarChart data={flows} margin={{top:8,right:12,bottom:4,left:2}}>
+
+    <Panel title="Annual coupon and principal profile" note="Cash flows grouped by year; the schedule above retains every individual payment period">
+      {valid?<ChartFrame height={260} className="bond-cashflow-chart"><ResponsiveContainer><BarChart data={annualFlows} margin={{top:8,right:12,bottom:4,left:2}}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
-        <XAxis dataKey="period" tick={{fontSize:10,fill:"#8291a0"}}/>
-        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={68} tickFormatter={value=>Number(value).toLocaleString("en-KE",{maximumFractionDigits:0})}/>
-        <Tooltip formatter={(value)=>money(Number(value))} labelFormatter={label=>"Payment period: "+String(label)} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/>
-        <Bar dataKey="cash_flow" name="Contractual cash flow" radius={[4,4,0,0]}>
-          {flows.map((row,index)=><Cell key={"cashflow-"+row.period} fill={index===flows.length-1?"#d5a43b":"#087f8c"}/>)}
-        </Bar>
-      </BarChart></ResponsiveContainer></ChartFrame>:<NoData message="Enter valid bond terms to generate the payment profile."/>}
+        <XAxis dataKey="year" tick={{fontSize:10,fill:"#8291a0"}}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={78} tickFormatter={value=>money(Number(value))}/>
+        <Tooltip formatter={(value)=>money(Number(value))} labelFormatter={label=>"Payment grouping: "+String(label)} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/>
+        <Bar dataKey="coupon" name="Coupon payments" stackId="cashflow" fill="#087f8c" radius={[0,0,0,0]}/>
+        <Bar dataKey="redemption" name="Principal redemption" stackId="cashflow" fill="#d5a43b" radius={[4,4,0,0]}/>
+      </BarChart></ResponsiveContainer></ChartFrame>:<NoData message="Enter valid bond terms to generate the annual payment profile."/>}
     </Panel>
   </div>;
 }
-
 function OptionsGreeks(){
   const [spot,setSpot]=useState("100"),[strike,setStrike]=useState("100"),[maturity,setMaturity]=useState("1"),[riskFree,setRiskFree]=useState("13"),[volatility,setVolatility]=useState("20"),[kind,setKind]=useState("Call");
   const S=Number(spot),K=Number(strike),T=Number(maturity),r=Number(riskFree)/100,sigma=Number(volatility)/100;
