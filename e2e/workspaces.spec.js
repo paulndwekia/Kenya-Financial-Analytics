@@ -135,8 +135,9 @@ test("market intelligence, curve shape, and auction risk have different outputs"
   await expect(page.getByText("Curve history")).toBeVisible();
 
   await page.goto("/?module=Risk%20Intelligence");
-  await expect(page.getByText("Treasury yield risk overview")).toBeVisible();
-  await expect(page.getByText("91-day interpretation")).toBeVisible();
+  await expect(page.getByText("FX risk comparison")).toBeVisible();
+  await expect(page.getByText("Realised volatility ranking")).toBeVisible();
+  await expect(page.getByText("Peak-to-trough comparison")).toBeVisible();
 });
 
 test("portfolio intelligence and financial reports expose distinct comparisons and exports", async ({ page }) => {
