@@ -3,3 +3,4 @@ psycopg[binary]==3.2.12
 requests==2.32.5
 beautifulsoup4==4.14.2
 pypdf==6.4.0
+xlsxwriter==3.3.4
