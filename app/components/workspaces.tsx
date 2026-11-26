@@ -418,7 +418,7 @@ function YieldCurve({data}:{data:MarketPayload}){
     {segment:"91 to 364 days",value:slopes["91_to_364"]??null}
   ];
   const interpolationDays=[120,150,210,270,300];
-  return <div className="workspace-stack">
+  return <div className="workspace-stack yield-curve-workspace">
     <Panel title="Latest recorded auction curve" note={latestDate||"No matched auction date"}>
       <div className="metric-grid">
         {TENORS.map(tenor=>{const row=latestCurve.find(x=>x.tenor_days===tenor);return <Metric key={tenor} label={tenor+"-day spot yield"} value={row?pct(row.rate,4):"—"} note={row?.issue_number||"No observation for this auction"}/>})}
