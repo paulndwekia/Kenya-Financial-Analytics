@@ -12,7 +12,7 @@ const moduleChecks = [
   ["Risk Analysis", "Historical FX risk"],
   ["Risk Intelligence", "FX risk comparison"],
   ["Stress Testing", "Capital shock scenarios"],
-  ["Portfolio Intelligence", "Relative performance"],
+  ["Portfolio Intelligence", "Fixed-income portfolio construction"],
   ["Portfolio", "Currency exposure basket"],
   ["Historical Market Explorer", "Historical observation explorer"],
   ["Research Intelligence", "Moving-average research"],
@@ -143,9 +143,10 @@ test("market intelligence, curve shape, and auction risk have different outputs"
 
 test("portfolio intelligence and financial reports expose distinct comparisons and exports", async ({ page }) => {
   await page.goto("/?module=Portfolio%20Intelligence");
-  await expect(page.getByText("Relative performance")).toBeVisible();
-  await expect(page.getByText("Daily-return correlation")).toBeVisible();
-  await expect(page.getByText("Risk and return profile")).toBeVisible();
+  await expect(page.getByText("Portfolio intelligence summary")).toBeVisible();
+  await expect(page.getByText("Concentration and CBK exposure")).toBeVisible();
+  await expect(page.getByText("Historical CBK risk contribution")).toBeVisible();
+  await expect(page.getByText("Expected annual P&L")).toBeVisible();
 
   await page.goto("/?module=Financial%20Reports");
   await expect(page.getByText("Market research report")).toBeVisible();
