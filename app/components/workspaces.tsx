@@ -291,7 +291,7 @@ function BondPricing(){
       {sensitivityValid?<div className="metric-grid"><Metric label="Estimated percentage change" value={pct(estimatedChange)}/><Metric label="Current model price" value={money(price)}/><Metric label="Estimated shocked price" value={money(shockedPrice)}/><Metric label="Estimated price change" value={money(shockedPrice-price)}/></div>:<NoData message="The selected shock produces an invalid estimated price. Check the yield and shock inputs."/>}
     </Panel>
     <Panel title="Scheduled coupon and redemption cash flows" note={periods+" payment periods · full schedule, not a sample"}>
-      {valid?<Table headers={["Period","Time (years)","Coupon / redemption cash flow","Present value"]} rows={flows.map(row=>[row.period,row.time.toFixed(2),money(row.cash),money(row.pv)])}/>:<NoData message="Valid bond inputs are required to calculate the cash-flow schedule."/>}
+      {valid?<Table headers={["Period","Time (years)","Coupon / redemption cash flow","Present value"]} rows={flows.map(row=>[row.period,row.time.toFixed(2),money(row.cash_flow),money(row.pv)])}/>:<NoData message="Valid bond inputs are required to calculate the cash-flow schedule."/>}
     </Panel>
 
     <Panel title="Bond price across yield scenarios" note="Full revaluation of the model cash flows at a range of annual yields">
@@ -822,7 +822,7 @@ function StressTesting({data}:{data:MarketPayload}){
     const tbillPnl=treasuryBillReinvestmentShock(tbill,effectiveRate,item.rate_change,tenor).income_change;
     return {name:item.name,change:item.rate_change,bondPnl,tbillPnl,totalPnl:bondPnl+tbillPnl,ending:startingFixedIncome+bondPnl+tbillPnl};
   });
-  const curveRates=[91,182,364].map(days=>({days,row:latestAuction.find(x=>x.tenor_days===days)})).filter(x=>x.row);
+  const curveRates=[91,182,364].map(days=>({days,row:latestAuction.find(x=>x.tenor_days===days)})).filter((x): x is {days:number;row:BillRow}=>x.row!==undefined);
   const observedCurve=Object.fromEntries(curveRates.map(({days,row})=>[days,row.rate])) as Record<number,number>;
   const steepened=curveScenario(observedCurve,-.005,.005);
   const flattened=curveScenario(observedCurve,.005,-.005);
