@@ -433,28 +433,102 @@ function HistoricalExplorer({data}:{data:MarketPayload}){
 }
 
 function PortfolioIntelligence({data}:{data:MarketPayload}){
-  const summaries=PAIRS.map(pair=>{
-    const {rows,values,rets}=seriesFor(data.fx,pair);
-    return {pair,rows,values,rets,total:values.length>1?values.at(-1)!/values[0]-1:0,vol:stdev(rets)*Math.sqrt(252),drawdown:maxDrawdown(values),avg:mean(rets)};
-  });
-  const returnsByDate=PAIRS.map(pair=>new Map(seriesFor(data.fx,pair).rows.slice(1).map((row,i)=>[row.date,seriesFor(data.fx,pair).values[i+1]/seriesFor(data.fx,pair).values[i]-1])));
-  const correlations=PAIRS.map((a,i)=>PAIRS.map((b,j)=>{
-    if(i===j)return "1.000";
-    const common=[...returnsByDate[i].keys()].filter(date=>returnsByDate[j].has(date));
-    const x=common.map(date=>returnsByDate[i].get(date)!),y=common.map(date=>returnsByDate[j].get(date)!);
-    const mx=mean(x),my=mean(y),den=Math.sqrt(x.reduce((s,v)=>s+(v-mx)**2,0)*y.reduce((s,v)=>s+(v-my)**2,0));
-    return den?((x.reduce((s,v,k)=>s+(v-mx)*(y[k]-my),0))/den).toFixed(3):"—";
+  const [values,setValues]=useState({t91:"300000",t182:"300000",t364:"250000",bond:"150000",cash:"0"});
+  const [bondReturn,setBondReturn]=useState("10"),[bondVol,setBondVol]=useState("8");
+  const [cashReturn,setCashReturn]=useState("3"),[cashVol,setCashVol]=useState("0.5");
+  const updateValue=(key:keyof typeof values,value:string)=>setValues(previous=>({...previous,[key]:value}));
+  const latestRate=(tenor:number)=>{
+    const rows=data.bills.filter(row=>row.tenor_days===tenor).sort((x,y)=>x.date.localeCompare(y.date));
+    return rows.at(-1)||null;
+  };
+  const historicalYieldChangeVol=(tenor:number)=>{
+    const rows=data.bills.filter(row=>row.tenor_days===tenor).sort((x,y)=>x.date.localeCompare(y.date));
+    const changes=rows.slice(1).map((row,i)=>row.rate-rows[i].rate);
+    return stdev(changes);
+  };
+  const positions=[
+    {id:"t91" as const,name:"91-Day Treasury Bill",value:Number(values.t91),latest:latestRate(91),expected:latestRate(91)?.rate??0,volatility:historicalYieldChangeVol(91),isTbill:true,tenor:91},
+    {id:"t182" as const,name:"182-Day Treasury Bill",value:Number(values.t182),latest:latestRate(182),expected:latestRate(182)?.rate??0,volatility:historicalYieldChangeVol(182),isTbill:true,tenor:182},
+    {id:"t364" as const,name:"364-Day Treasury Bill",value:Number(values.t364),latest:latestRate(364),expected:latestRate(364)?.rate??0,volatility:historicalYieldChangeVol(364),isTbill:true,tenor:364},
+    {id:"bond" as const,name:"Government Bond",value:Number(values.bond),latest:null,expected:Number(bondReturn)/100,volatility:Number(bondVol)/100,isTbill:false,tenor:0},
+    {id:"cash" as const,name:"Cash",value:Number(values.cash),latest:null,expected:Number(cashReturn)/100,volatility:Number(cashVol)/100,isTbill:false,tenor:0},
+  ];
+  const valid=positions.every(row=>Number.isFinite(row.value)&&row.value>=0&&Number.isFinite(row.expected)&&Number.isFinite(row.volatility)&&row.volatility>=0)&&Number.isFinite(Number(bondReturn))&&Number.isFinite(Number(bondVol))&&Number.isFinite(Number(cashReturn))&&Number.isFinite(Number(cashVol));
+  const active=positions.filter(row=>row.value>0);
+  const total=active.reduce((sum,row)=>sum+row.value,0);
+  const alloc=active.map(row=>({...row,weight:total?row.value/total:0,annualPnl:row.value*row.expected}));
+  const expectedPnl=alloc.reduce((sum,row)=>sum+row.annualPnl,0);
+  const expectedReturn=total?expectedPnl/total:0;
+  const variance=alloc.reduce((sum,row)=>sum+row.weight**2*row.volatility**2,0);
+  const portfolioVolatility=Math.sqrt(variance);
+  const var95=1.64485*portfolioVolatility*total/Math.sqrt(252);
+  const var99=2.32635*portfolioVolatility*total/Math.sqrt(252);
+  const largest=alloc.reduce((best,row)=>!best||row.weight>best.weight?row:best,null as typeof alloc[number]|null);
+  const hhi=alloc.reduce((sum,row)=>sum+row.weight**2,0);
+  const diversification=Math.max(0,Math.min(1,1-hhi));
+  const tbillValue=alloc.filter(row=>row.isTbill).reduce((sum,row)=>sum+row.value,0);
+  const tbillWeight=total?tbillValue/total:0;
+  const chart=alloc.map(row=>({asset:row.name,value:row.weight*100}));
+  const riskRows=alloc.filter(row=>row.isTbill).map(row=>({
+    name:row.name,weight:row.weight,yield:row.latest?.rate??null,volatility:row.volatility,contribution:row.weight*row.volatility
   }));
   return <div className="workspace-stack">
-    <Panel title="Relative performance" note="Each series is measured over its own available observation window">
-      <Table headers={["Pair","Observations","First date","Latest date","Cumulative change","Annualised volatility","Max drawdown"]} rows={summaries.map(x=>[x.pair,x.rows.length,x.rows[0]?.date||"—",x.rows.at(-1)?.date||"—",pct(x.total),pct(x.vol),pct(x.drawdown)])}/>
+    <Panel title="Fixed-income portfolio construction" note="Enter KES position values; Treasury bill expected yields link to the latest stored CBK auction result">
+      <div className="metric-grid">
+        <Field label="91-day Treasury bill value (KES)" value={values.t91} onChange={v=>updateValue("t91",v)} min="0"/>
+        <Field label="182-day Treasury bill value (KES)" value={values.t182} onChange={v=>updateValue("t182",v)} min="0"/>
+        <Field label="364-day Treasury bill value (KES)" value={values.t364} onChange={v=>updateValue("t364",v)} min="0"/>
+        <Field label="Government bond value (KES)" value={values.bond} onChange={v=>updateValue("bond",v)} min="0"/>
+        <Field label="Cash value (KES)" value={values.cash} onChange={v=>updateValue("cash",v)} min="0"/>
+      </div>
+      <div className="metric-grid">
+        <Field label="Government bond expected return (%)" value={bondReturn} onChange={setBondReturn} min="-100" max="100"/>
+        <Field label="Government bond volatility (%)" value={bondVol} onChange={setBondVol} min="0" max="100"/>
+        <Field label="Cash expected return (%)" value={cashReturn} onChange={setCashReturn} min="-100" max="100"/>
+        <Field label="Cash volatility (%)" value={cashVol} onChange={setCashVol} min="0" max="100"/>
+      </div>
+      {!valid||total<=0?<NoData message="Enter finite, non-negative KES position values and valid return and volatility assumptions. At least one position must have a positive value."/>:
+      <Table headers={["Position","Value","Expected annual return","Return source"]} rows={alloc.map(row=>[
+        row.name,money(row.value),pct(row.expected,3),row.isTbill?(row.latest?.date||"No CBK yield available"):"User assumption"
+      ])}/>}
     </Panel>
-    <Panel title="Daily-return correlation" note="Pearson correlation over dates shared by each pair; FX crosses are not independent assets">
-      <Table headers={["Pair",...PAIRS]} rows={PAIRS.map((pair,i)=>[pair,...correlations[i]])}/>
+    {valid&&total>0?<><Panel title="Portfolio intelligence summary" note="Weighted annual estimates based on the entered positions and available CBK bill yields">
+      <div className="metric-grid">
+        <Metric label="Portfolio value" value={money(total)}/>
+        <Metric label="Weighted expected return" value={pct(expectedReturn,3)}/>
+        <Metric label="Expected annual P&L" value={money(expectedPnl)}/>
+        <Metric label="Number of positions" value={String(alloc.length)}/>
+        <Metric label="Portfolio volatility" value={pct(portfolioVolatility,3)} note="Independent-position approximation"/>
+        <Metric label="Parametric VaR · 95%" value={money(var95)} note="Daily horizon, normal approximation"/>
+        <Metric label="Parametric VaR · 99%" value={money(var99)} note="Daily horizon, normal approximation"/>
+        <Metric label="Diversification score" value={(diversification*100).toFixed(1)+"/100"} note="1 − sum of squared allocation weights"/>
+      </div>
+      <div className="dashboard-grid">
+        <div>
+          <div className="panel-title">Portfolio allocation</div>
+          <ChartFrame height={270}><ResponsiveContainer><BarChart data={chart} layout="vertical"><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e7edf2"/><XAxis type="number" tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><YAxis dataKey="asset" type="category" tick={{fontSize:10,fill:"#8291a0"}} width={128}/><ChartTooltip/><Bar dataKey="value" name="Portfolio weight" fill="#16835d" radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></ChartFrame>
+        </div>
+        <div>
+          <div className="panel-title">Position contribution</div>
+          <Table headers={["Position","Weight","Expected annual P&L"]} rows={alloc.map(row=>[row.name,pct(row.weight),money(row.annualPnl)])}/>
+        </div>
+      </div>
     </Panel>
-    <Panel title="Risk and return profile" note="Historical cumulative change versus annualised realised volatility">
-      <ChartFrame height={300}><ResponsiveContainer><ScatterChart><CartesianGrid strokeDasharray="3 3" stroke="#e7edf2"/><XAxis type="number" dataKey="vol" name="Annualised volatility" unit="%" tick={{fontSize:10,fill:"#8291a0"}}/><YAxis type="number" dataKey="return" name="Cumulative change" unit="%" tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Scatter data={summaries.map(x=>({pair:x.pair,vol:x.vol*100,return:x.total*100}))} fill="#087f8c"/></ScatterChart></ResponsiveContainer></ChartFrame>
+    <Panel title="Concentration and CBK exposure" note="Portfolio shares are calculated from total entered KES value">
+      <div className="metric-grid">
+        <Metric label="Largest position" value={largest?.name||"—"}/>
+        <Metric label="Largest position weight" value={largest?pct(largest.weight):"—"}/>
+        <Metric label="Treasury bill exposure" value={money(tbillValue)}/>
+        <Metric label="Treasury bill share" value={pct(tbillWeight)}/>
+      </div>
+      <p className="panel-note">{largest&&largest.weight>=.6?"Concentration is high: one position represents at least 60% of this portfolio.":largest&&largest.weight>=.4?"Concentration is moderate: the largest position represents between 40% and 60%.":"No single position exceeds 40% of the entered portfolio."} {tbillWeight>=.7?"The portfolio is heavily exposed to Treasury bills; reinvestment conditions and CBK auction rates may materially affect future returns.":tbillWeight>=.4?"Treasury bills form a significant portion of the allocation.":"Treasury bill exposure is below 40% of the entered portfolio."}</p>
     </Panel>
+    <Panel title="Historical CBK risk contribution" note="Yield-change volatility is calculated from successive auction-rate differences">
+      {riskRows.length?<Table headers={["Treasury bill","Portfolio weight","Latest CBK yield","Historical yield-change volatility","Weighted contribution"]} rows={riskRows.map(row=>[
+        row.name,pct(row.weight),row.yield===null?"—":pct(row.yield,4),pct(row.volatility,4),pct(row.contribution,4)
+      ])}/>:<NoData message="No Treasury bill positions have been entered. Add a bill position to display its historical CBK yield risk contribution."/>}
+      <p className="panel-note">Treasury bill risk contribution uses the standard deviation of historical yield changes, matching the retained CBK portfolio-intelligence module. It is not a total-return volatility estimate. Bond and cash volatility are user assumptions. Portfolio VaR uses an independent-position, normal approximation.</p>
+    </Panel></>:null}
   </div>;
 }
 
