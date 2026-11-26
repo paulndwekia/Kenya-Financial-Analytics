@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Activity, ArrowDownRight, ArrowUpRight, BarChart3, Bell, BookOpen, BriefcaseBusiness, ChartNoAxesCombined, ChevronRight, CircleDollarSign, FileText, Gauge, Globe2, Layers3, Menu, Moon, Search, ShieldCheck, Sun, TrendingUp, Wallet, X, Zap } from "lucide-react";
+import { Activity, ArrowDownRight, ArrowUpRight, BarChart3, BookOpen, BriefcaseBusiness, ChartNoAxesCombined, ChevronRight, CircleDollarSign, FileText, Gauge, Globe2, Layers3, Menu, Moon, Search, ShieldCheck, Sun, TrendingUp, Wallet, X, Zap, RefreshCw } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type MarketPoint={date:string;instrument:string;value:number;source:string};
@@ -27,7 +27,8 @@ const modules=[
 const money=(n:number)=>new Intl.NumberFormat("en-KE",{minimumFractionDigits:2,maximumFractionDigits:4}).format(n);
 export default function Home(){
  const [active,setActive]=useState("Dashboard"),[data,setData]=useState<Payload|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(""),[dark,setDark]=useState(false),[menu,setMenu]=useState(false),[query,setQuery]=useState(""),[cookie,setCookie]=useState(false);
- useEffect(()=>{setCookie(!localStorage.getItem("kfa-cookie-choice"));fetch("/api/market").then(r=>r.json()).then((d:Payload)=>setData(d)).catch(()=>setError("Market data could not be reached. Please try again shortly.")).finally(()=>setLoading(false));},[]);
+ const refreshData=()=>{setLoading(true);fetch("/api/market",{cache:"no-store"}).then(async r=>{if(!r.ok)throw new Error("Market service returned HTTP "+r.status);const d=await r.json() as Payload;setData(d);setError(d.ok?"":"The data service is reachable, but the connected snapshot has no market observations.");}).catch(()=>setError("Market data service could not be reached. Please try again.")).finally(()=>setLoading(false));};
+ useEffect(()=>{setCookie(!localStorage.getItem("kfa-cookie-choice"));setDark(localStorage.getItem("kfa-theme")==="dark");refreshData();const timer=window.setInterval(refreshData,300000);return()=>window.clearInterval(timer);},[]);
  const fx=useMemo(()=>{const grouped=new Map<string,MarketPoint[]>();(data?.fx||[]).forEach(x=>grouped.set(x.instrument,[...(grouped.get(x.instrument)||[]),x]));return grouped;},[data]);
  const latest=(key:string)=>{const rows=fx.get(key)||[];return rows[rows.length-1];};
  const chart=(fx.get("USD/KES")||[]).slice(-45).map(x=>({date:x.date.slice(5),rate:x.value}));
@@ -42,7 +43,7 @@ export default function Home(){
    {["Markets","Fixed income","Quantitative tools","Risk","Portfolio","Research"].map(group=><div key={group}><div className="nav-label">{group.toUpperCase()}</div><div className="nav-list">{modules.filter(m=>m.group===group).map(m=><NavItem key={m.name} item={m} active={active===m.name} onClick={()=>choose(m.name)}/>)}</div></div>)}
    <div className="side-foot">Independent Kenyan market analytics<br/>Data provenance: Central Bank of Kenya<br/>© {new Date().getFullYear()} Kenya Financial Analytics</div>
   </aside>
-  <main className="main"><header className="topbar"><div style={{display:"flex",alignItems:"center",gap:12}}><button className="mobile-menu" onClick={()=>setMenu(true)} aria-label="Open menu"><Menu size={18}/></button><span className="crumb">Research terminal <ChevronRight size={12} style={{verticalAlign:"middle"}}/> {active}</span></div><div className="top-actions"><span className="status-pill"><i className="status-dot"/>{loading?"CONNECTING":error?"CHECK CONNECTION":"DATA SERVICE"}</span><button className="theme-button" onClick={()=>setDark(!dark)} aria-label="Toggle theme">{dark?<Sun size={16}/>:<Moon size={16}/>}</button></div></header>
+  <main className="main"><header className="topbar"><div style={{display:"flex",alignItems:"center",gap:12}}><button className="mobile-menu" onClick={()=>setMenu(true)} aria-label="Open menu"><Menu size={18}/></button><span className="crumb">Research terminal <ChevronRight size={12} style={{verticalAlign:"middle"}}/> {active}</span></div><div className="top-actions"><span className="status-pill" style={data?.ok&&!error?{}:{background:"#fff8e8",borderColor:"#f1dfb8",color:"#9a6a12"}}><i className="status-dot" style={{background:data?.ok&&!error?"#1b9a6d":"#d39b32",boxShadow:"none"}}/>{loading?"UPDATING":data?.ok&&!error?"CBK DATA AVAILABLE":"DATA NOT VERIFIED"}</span><button className="theme-button" onClick={()=>setDark(v=>{const next=!v;localStorage.setItem("kfa-theme",next?"dark":"light");return next;})} aria-label="Toggle theme">{dark?<Sun size={16}/>:<Moon size={16}/>}</button><button className="theme-button" onClick={refreshData} aria-label="Refresh market data" disabled={loading}><RefreshCw size={15}/></button></div></header>
    <div className="content">
     <AnimatePresence mode="wait"><motion.div key={active} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-5}} transition={{duration:.22}}>
      <div className="welcome-row"><div><div className="eyebrow">Kenyan markets · Quantitative research</div><h1 className="page-title">{active==="Dashboard"?"Market overview":active}</h1><p className="sub-title">{active==="Dashboard"?"Market data, fixed income and portfolio risk in one research workspace.":activeModule.desc}</p></div><div className="date-note">Last checked · {data?.retrieved_at?new Date(data.retrieved_at).toLocaleString("en-KE"):"Awaiting data"}</div></div>
@@ -60,7 +61,7 @@ export default function Home(){
      <footer className="footer"><span>© {new Date().getFullYear()} Kenya Financial Analytics · Independent research workspace</span><span><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/cookies">Cookies</a><a href="https://www.centralbank.go.ke/" target="_blank" rel="noreferrer">CBK source</a></span></footer>
     </motion.div></AnimatePresence>
    </div></main>
-  {cookie&&<div className="cookie-banner"><div><strong style={{fontSize:12}}>A note about cookies</strong><p>We use essential browser storage to remember your display preferences and cookie choice. Optional analytics are not enabled in this release. Read our <a href="/cookies" style={{color:"#9edadd"}}>cookie notice</a>.</p></div><div className="cookie-actions"><button className="secondary" onClick={()=>consent("essential-only")}>Essential only</button><button onClick={()=>consent("accepted")}>Continue</button></div></div>}
+  {cookie&&<div className="cookie-banner"><div><strong style={{fontSize:12}}>A note about cookies</strong><p>We use essential browser storage to remember your display preferences and cookie choice. No analytics or advertising cookies are enabled. Read our <a href="/cookies" style={{color:"#9edadd"}}>cookie notice</a>.</p></div><div className="cookie-actions"><button className="secondary" onClick={()=>consent("essential-only")}>Essential only</button><button onClick={()=>consent("essential-only")}>Got it</button></div></div>}
  </div>;
 }
 function NavItem({item,active,onClick}:{item:any;active:boolean;onClick:()=>void}){const Icon=item.icon;return <button onClick={onClick} className={active?"nav-item active":"nav-item"}><span className="nav-dot" style={{"--accent":item.color} as React.CSSProperties}/>{item.name}</button>}
