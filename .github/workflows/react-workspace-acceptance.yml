@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: kfa-react-acceptance-\${{ github.ref }}
+  group: kfa-react-acceptance-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
