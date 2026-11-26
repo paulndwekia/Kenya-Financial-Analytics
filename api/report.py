@@ -286,12 +286,11 @@ def build_workbook(fx, bills, refresh):
         if not rows:
             continue
         fx_chart.add_series({
-            "name": ["Chart Data", 0, idx + 1],
+            "name": pair,
             "categories": ["Chart Data", 1, 0, len(all_fx_dates), 0],
             "values": ["Chart Data", 1, idx + 1, len(all_fx_dates), idx + 1],
             "line": {"width": 2.0},
             "marker": {"type": "none"},
-            "gap": True,
         })
     fx_chart.set_title({"name": "KES exchange-rate history"})
     fx_chart.set_x_axis({"name": "CBK observation date", "date_axis": True, "num_format": "mmm-yy", "line": {"color": "#AAB7C4"}})
@@ -309,7 +308,7 @@ def build_workbook(fx, bills, refresh):
         if not rows:
             continue
         bill_chart.add_series({
-            "name": ["Chart Data", 0, idx + 5],
+            "name": f"{tenor_value}-day",
             "categories": ["Chart Data", 1, 5, len(all_bill_dates), 5],
             "values": ["Chart Data", 1, idx + 5, len(all_bill_dates), idx + 5],
             "line": {"width": 2.0},
