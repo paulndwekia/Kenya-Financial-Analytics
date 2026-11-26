@@ -1,2 +1,4 @@
-# Vercel's read-only market API uses Python's standard library only.
-# Streamlit application dependencies are retained in requirements-streamlit.txt.
+# Vercel Python API dependencies
+psycopg[binary]==3.2.12
+requests==2.32.5
+beautifulsoup4==4.14.2
