@@ -145,7 +145,7 @@ function Dashboard({data,loading}:{data:MarketPayload|null;loading:boolean}){
           <div className="dashboard-quote-value">{latest?latest.value.toFixed(4):"—"}</div>
           <div className="dashboard-quote-bottom">
             <span>Daily movement</span>
-            {dailyChange===null?<span className="dashboard-quote-flat">—</span>:<span className={dailyChange>0?"dashboard-change dashboard-change-up":dailyChange<0?"dashboard-change dashboard-change-down":"dashboard-quote-flat"}>{dailyChange>0?"+":""}{pct(dailyChange,3)}</span>}
+            {dailyChange===null?<span className="dashboard-quote-flat">—</span>:<span className={dailyChange>0?"dashboard-change dashboard-change-up":dailyChange<0?"dashboard-change dashboard-change-down":"dashboard-quote-flat"}>{dailyChange>0?"+":""}{pct(dailyChange,3)} · {dailyChange>0?"KES weaker":dailyChange<0?"KES firmer":"Unchanged"}</span>}
           </div>
         </div>
       )}
@@ -153,7 +153,7 @@ function Dashboard({data,loading}:{data:MarketPayload|null;loading:boolean}){
 
     <div className="dashboard-grid dashboard-market-grid">
       <Panel title="KES exchange-rate performance" note="Relative index · first observation in each displayed series = 100">
-        {indexedHistory.length>1?<ChartFrame height={310}><ResponsiveContainer><LineChart data={indexedHistory} margin={{top:12,right:12,bottom:4,left:2}}>
+        {indexedHistory.length>1?<ChartFrame height={310} className="dashboard-index-chart"><ResponsiveContainer><LineChart data={indexedHistory} margin={{top:12,right:12,bottom:4,left:2}}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
           <XAxis dataKey="date" minTickGap={26} tick={{fontSize:10,fill:"#8291a0"}} axisLine={false} tickLine={false}/>
           <YAxis tick={{fontSize:10,fill:"#8291a0"}} domain={["auto","auto"]} width={48}/>
