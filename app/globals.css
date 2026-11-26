@@ -306,3 +306,19 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
  .intelligence-ranking-table .data-table{font-size:9px}
 }
 @media(max-width:380px){.intelligence-kpis .metric-value{font-size:15px}.correlation-matrix th:first-child{width:78px}}
+
+/* Yield Curve: observed spot curve, segment readings and maturity-limited forwards */
+.yield-curve-chart{min-width:0}
+.yield-curve-slope-table{margin-top:12px;overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+.yield-curve-slope-table .data-table th,.yield-curve-slope-table .data-table td{padding:9px 10px;font-size:10px}
+.yield-curve-slope-table .data-table th{background:#f1f5f8}
+.dark .yield-curve-slope-table .data-table th{background:#26394d}
+.yield-curve-workspace .control-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end}
+.yield-curve-workspace .control-row .field{min-width:0}
+.yield-curve-workspace .control-row .search{width:100%;min-width:0}
+.yield-curve-workspace .metric-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:760px){
+ .yield-curve-workspace .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .yield-curve-workspace .control-row{grid-template-columns:minmax(0,1fr)}
+ .yield-curve-slope-table .data-table{font-size:9px}
+}
