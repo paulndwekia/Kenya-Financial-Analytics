@@ -252,3 +252,57 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
  .market-recent-table{max-height:290px}
 }
 @media(max-width:380px){.market-detail-metrics .metric-value{font-size:16px}.market-range-extremes strong{font-size:14px}}
+
+/* Market Intelligence: rankings, return/risk positioning and aligned-date correlation */
+.intelligence-controls{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.intelligence-control-label,.intelligence-coverage>span{display:block;font-size:9px;color:var(--muted);font-weight:700;margin-bottom:6px}
+.intelligence-coverage{display:grid;gap:3px;text-align:right}
+.intelligence-coverage strong{font-size:13px;font-variant-numeric:tabular-nums;color:var(--ink)}
+.intelligence-coverage small{font-size:9px;color:var(--muted)}
+.intelligence-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:15px 0}
+.intelligence-kpis .metric-card{min-width:0;padding:13px}
+.intelligence-kpis .metric-value{font-size:clamp(16px,1.8vw,21px);overflow-wrap:anywhere}
+.intelligence-kpis .metric-foot{font-size:9px;line-height:1.45;min-height:25px}
+.intelligence-ranking-table{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+.intelligence-ranking-table .data-table{font-size:10px;white-space:nowrap}
+.intelligence-ranking-table .data-table th{background:#f1f5f8;padding:9px 8px}
+.intelligence-ranking-table .data-table td{padding:9px 8px}
+.dark .intelligence-ranking-table .data-table th{background:#26394d}
+.intelligence-chart-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.intelligence-momentum-chart,.intelligence-scatter-chart{min-width:0}
+.correlation-legend{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:2px 0 12px;font-size:9px;color:var(--muted)}
+.correlation-legend span{display:flex;align-items:center;gap:5px}
+.corr-dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.corr-dot.high{background:#087f8c}
+.corr-dot.mid{background:#8dbdc0}
+.corr-dot.negative{background:#d5a43b}
+.corr-dot.low{background:#a5b0ba}
+.correlation-matrix-wrap{overflow-x:auto}
+.correlation-matrix{width:100%;border-collapse:separate;border-spacing:5px;table-layout:fixed;min-width:460px}
+.correlation-matrix th{font-size:9px;color:var(--muted);font-weight:700;padding:8px 5px;text-align:center;white-space:nowrap}
+.correlation-matrix th:first-child{text-align:left;width:92px}
+.correlation-matrix td{text-align:center;padding:3px}
+.correlation-matrix td small{display:block;margin-top:4px;font-size:8px;color:var(--muted);font-variant-numeric:tabular-nums}
+.correlation-cell{border:1px solid transparent;border-radius:7px;padding:12px 5px;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--ink)}
+.correlation-high{background:#d9efed;border-color:#b1dcd8;color:#176c68}
+.correlation-mid{background:#eaf5f3;border-color:#d3e9e5;color:#397f7a}
+.correlation-negative{background:#fbf1d9;border-color:#ecdcae;color:#8f6d23}
+.correlation-low{background:#eef2f5;border-color:#e0e6eb;color:#5e6c78}
+.correlation-missing{background:var(--surface-2);border-color:var(--line);color:var(--muted)}
+.dark .correlation-high{background:#1c4947;border-color:#286761;color:#9de0d6}
+.dark .correlation-mid{background:#203f40;border-color:#315a58;color:#b5dfd8}
+.dark .correlation-negative{background:#4a3c20;border-color:#6a5527;color:#eed28e}
+.dark .correlation-low{background:#283a4b;border-color:#3b5166;color:#c6d0d9}
+@media(max-width:1050px){.intelligence-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){
+ .intelligence-controls{align-items:stretch}
+ .intelligence-controls>div:first-child{width:100%}
+ .intelligence-controls .market-range-group{width:100%}
+ .intelligence-coverage{text-align:left}
+ .intelligence-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .intelligence-kpis .metric-card{padding:10px}
+ .intelligence-kpis .metric-value{font-size:17px}
+ .intelligence-chart-grid{grid-template-columns:minmax(0,1fr)}
+ .intelligence-ranking-table .data-table{font-size:9px}
+}
+@media(max-width:380px){.intelligence-kpis .metric-value{font-size:15px}.correlation-matrix th:first-child{width:78px}}
