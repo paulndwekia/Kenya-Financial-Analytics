@@ -10,7 +10,7 @@ const moduleChecks = [
   ["Options & Greeks", "Black–Scholes model"],
   ["Backtesting", "Moving-average strategy test"],
   ["Risk Analysis", "Historical FX risk"],
-  ["Risk Intelligence", "Treasury yield risk overview"],
+  ["Risk Intelligence", "FX risk comparison"],
   ["Stress Testing", "Capital shock scenarios"],
   ["Portfolio Intelligence", "Relative performance"],
   ["Portfolio", "Currency exposure basket"],
@@ -132,7 +132,8 @@ test("market intelligence, curve shape, and auction risk have different outputs"
   await page.goto("/?module=Yield%20Curve");
   await expect(page.getByText("Latest recorded auction curve")).toBeVisible();
   await expect(page.getByText("364s–91s spread")).toBeVisible();
-  await expect(page.getByText("Curve history")).toBeVisible();
+  await expect(page.getByText("Interpolated spot rates")).toBeVisible();
+  await expect(page.getByText("Implied forward rate")).toBeVisible();
 
   await page.goto("/?module=Risk%20Intelligence");
   await expect(page.getByText("FX risk comparison")).toBeVisible();
@@ -169,6 +170,7 @@ test("Treasury bill calculator and auction history respond to input", async ({ p
   await page.goto("/?module=Treasury%20Bills");
   await expect(page.locator(".page-title")).toHaveText("Treasury Bills");
   await expect(page.getByText("14 observations")).toBeVisible();
+  await expect(page.getByText("Same-auction tenor comparison")).toBeVisible();
   await page.getByLabel("Face value (KES)").fill("50000");
   await page.getByLabel("Annual investment yield (%)").fill("9");
   await page.getByLabel("Days to maturity").fill("182");
@@ -182,9 +184,13 @@ test("bond pricing recalculates and retains the full cash-flow schedule", async 
   await page.getByLabel("Annual coupon rate (%)").fill("12");
   await page.getByLabel("Yield to maturity (%)").fill("13");
   await page.getByLabel("Years to maturity").fill("5");
-  await expect(page.getByText("Scheduled cash flows")).toBeVisible();
-  await expect(page.locator(".metric-card").filter({ hasText: "Model clean price" })).toBeVisible();
-  await expect(page.locator(".metric-card").filter({ hasText: "Model clean price" })).not.toContainText("KES 0.00");
+  await page.getByLabel("Observed market price (KES)").fill("95000");
+  await expect(page.getByText("Yield to maturity solver")).toBeVisible();
+  await expect(page.locator(".metric-card").filter({ hasText: "Implied yield to maturity" })).toBeVisible();
+  await expect(page.getByText("Duration and convexity price sensitivity")).toBeVisible();
+  await expect(page.getByText("Scheduled coupon and redemption cash flows")).toBeVisible();
+  await expect(page.locator(".metric-card").filter({ hasText: "Model bond price" })).toBeVisible();
+  await expect(page.locator(".metric-card").filter({ hasText: "Model bond price" })).not.toContainText("KES 0.00");
 });
 
 test("options calculator switches call and put and returns the Greeks", async ({ page }) => {
