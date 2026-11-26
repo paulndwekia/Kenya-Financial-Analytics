@@ -308,7 +308,15 @@ function HistoricalExplorer({data}:{data:MarketPayload}){
   const headers=kind==="FX"?["Date","Instrument","Rate","Source"]:["Auction date","Tenor days","Market-weighted rate","Issue number","Source"];
   return <div className="workspace-stack">
     <Panel title="Historical observation explorer" note="Filter the underlying records; export contains only the rows currently displayed">
-      <div className="filter-grid"><label className="field"><span>Dataset</span><select className="search" value={kind} onChange={e=>setKind(e.target.value)}><option>FX</option><option>Treasury bills</option></select></label><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}><option>All</option>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label><label className="field"><span>Tenor</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}><option>All</option>{TENORS.map(x=><option key={x} value={x}>{x} days</option>)}</select></label><label className="field"><span>From</span><input className="search" type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label><label className="field"><span>To</span><input className="search" type="date" value={to} onChange={e=>setTo(e.target.value)}/></label><label className="field"><span>Search source or date</span><input className="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Type to filter"/></label></div>
+      <div className="filter-grid">
+        <label className="field"><span>Dataset</span><select className="search" value={kind} onChange={e=>setKind(e.target.value)}><option>FX</option><option>Treasury bills</option></select></label>
+        {kind==="FX"
+          ? <label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}><option>All</option>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label>
+          : <label className="field"><span>Tenor</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}><option>All</option>{TENORS.map(x=><option key={x} value={x}>{x} days</option>)}</select></label>}
+        <label className="field"><span>From</span><input className="search" type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
+        <label className="field"><span>To</span><input className="search" type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
+        <label className="field"><span>Search source or date</span><input className="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Type to filter"/></label>
+      </div>
       <div className="panel-head"><span className="panel-note">{exportRows.length.toLocaleString("en-KE")} records match the filters</span><button className="primary-btn" onClick={()=>csvDownload(kind==="FX"?"kfa-fx-observations.csv":"kfa-treasury-bill-observations.csv",headers,exportRows)}>Export CSV</button></div>
       {kind==="FX"?<Table headers={headers} rows={[...exportRows].reverse().map(row=>[row[0],row[1],Number(row[2]).toFixed(4),row[3]])}/>:<Table headers={headers} rows={[...exportRows].reverse().map(row=>[row[0],row[1],pct(Number(row[2]),4),row[3],row[4]])}/>}
     </Panel>
