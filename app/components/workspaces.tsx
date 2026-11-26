@@ -268,7 +268,7 @@ function BondPricing(){
   const [marketPrice,setMarketPrice]=useState("95000"),[shockBps,setShockBps]=useState("100");
   const f=Number(face),c=Number(coupon)/100,y=Number(ytm)/100,n=Number(frequency),t=Number(years);
   const observedPrice=Number(marketPrice),dy=Number(shockBps)/10000;
-  const valid=[f,c,y,n,t].every(Number.isFinite)&&f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n);
+  const valid=[f,c,y,n,t].every(Number.isFinite)&&f>0&&c>=0&&c<=1&&y>-1&&y<=1&&t>0&&t<=100&&[1,2,4].includes(n)&&Math.round(t*n)>=1;
   const marketPriceValid=Number.isFinite(observedPrice)&&observedPrice>0;
   const shockValid=Number.isFinite(dy)&&Math.abs(Number(shockBps))<=5000;
   const periods=valid?Math.max(1,Math.round(t*n)):0;
@@ -326,13 +326,13 @@ function BondPricing(){
 function OptionsGreeks(){
   const [spot,setSpot]=useState("100"),[strike,setStrike]=useState("100"),[maturity,setMaturity]=useState("1"),[riskFree,setRiskFree]=useState("13"),[volatility,setVolatility]=useState("20"),[kind,setKind]=useState("Call");
   const S=Number(spot),K=Number(strike),T=Number(maturity),r=Number(riskFree)/100,sigma=Number(volatility)/100;
-  const valid=[S,K,T,sigma,r].every(Number.isFinite)&&S>0&&K>0&&T>0&&sigma>0&&r>-1;
+  const valid=[S,K,T,sigma,r].every(Number.isFinite)&&S>0&&K>0&&T>0&&T<=100&&sigma>0&&sigma<=5&&r>=-1&&r<=1;
   const greeks=valid?blackScholes({spot:S,strike:K,time:T,rate:r,volatility:sigma,type:kind as "Call"|"Put"}):null;
   const price=greeks?.price||0,delta=greeks?.delta||0,gamma=greeks?.gamma||0,vega=greeks?.vega||0,theta=greeks?.theta||0,rho=greeks?.rho||0;
   return <div className="workspace-stack">
     <Panel title="Black–Scholes model" note="European option; continuous risk-free rate, no dividends or transaction costs" action={<select className="search" value={kind} onChange={e=>setKind(e.target.value)}><option>Call</option><option>Put</option></select>}>
-      <div className="metric-grid"><Field label="Underlying price" value={spot} onChange={setSpot} min="0.01"/><Field label="Strike price" value={strike} onChange={setStrike} min="0.01"/><Field label="Time to expiry (years)" value={maturity} onChange={setMaturity} min="0.001"/><Field label="Risk-free rate (%)" value={riskFree} onChange={setRiskFree}/><Field label="Volatility (%)" value={volatility} onChange={setVolatility} min="0.01"/></div>
-      {valid?<div className="metric-grid"><Metric label={kind+" model value"} value={price.toFixed(6)}/><Metric label="Delta" value={delta.toFixed(5)}/><Metric label="Gamma" value={gamma.toFixed(6)}/><Metric label="Vega / 1 vol point" value={vega.toFixed(5)}/><Metric label="Theta / day" value={theta.toFixed(6)}/><Metric label="Rho / 1 rate point" value={rho.toFixed(5)}/></div>:<NoData message="Enter positive spot, strike, time to expiry and volatility. The risk-free rate must be greater than −100%."/>}
+      <div className="metric-grid"><Field label="Underlying price" value={spot} onChange={setSpot} min="0.01"/><Field label="Strike price" value={strike} onChange={setStrike} min="0.01"/><Field label="Time to expiry (years)" value={maturity} onChange={setMaturity} min="0.001" max="100"/><Field label="Risk-free rate (%)" value={riskFree} onChange={setRiskFree} min="-100" max="100"/><Field label="Volatility (%)" value={volatility} onChange={setVolatility} min="0.01" max="500"/></div>
+      {valid?<div className="metric-grid"><Metric label={kind+" model value"} value={price.toFixed(6)}/><Metric label="Delta" value={delta.toFixed(5)}/><Metric label="Gamma" value={gamma.toFixed(6)}/><Metric label="Vega / 1 vol point" value={vega.toFixed(5)}/><Metric label="Theta / day" value={theta.toFixed(6)}/><Metric label="Rho / 1 rate point" value={rho.toFixed(5)}/></div>:<NoData message="Enter positive spot and strike, time to expiry up to 100 years, volatility above 0% and no greater than 500%, and a risk-free rate from −100% to 100%."/>}
     </Panel>
     <Panel title="Model assumptions" note="Read before comparing model value with an observed market option price">
       <Table headers={["Input","Assumption"]} rows={[["Exercise","European, exercise only at expiry"],["Underlying","No dividends or carry adjustment"],["Volatility","Constant over the option life"],["Interest rate","Constant continuously compounded risk-free rate"],["Market frictions","No transaction costs, bid–ask spread or liquidity adjustment"]]}/>
@@ -590,8 +590,13 @@ function PortfolioIntelligence({data}:{data:MarketPayload}){
     {id:"bond" as const,name:"Government Bond",value:Number(values.bond),latest:null,expected:Number(bondReturn)/100,volatility:Number(bondVol)/100,isTbill:false,tenor:0},
     {id:"cash" as const,name:"Cash",value:Number(values.cash),latest:null,expected:Number(cashReturn)/100,volatility:Number(cashVol)/100,isTbill:false,tenor:0},
   ];
-  const valid=positions.every(row=>Number.isFinite(row.value)&&row.value>=0&&Number.isFinite(row.expected)&&Number.isFinite(row.volatility)&&row.volatility>=0)&&Number.isFinite(Number(bondReturn))&&Number.isFinite(Number(bondVol))&&Number.isFinite(Number(cashReturn))&&Number.isFinite(Number(cashVol));
-  const active=positions.filter(row=>row.value>0);
+  const missingBillHistory=positions.some(row=>row.isTbill&&row.value>0&&(!row.latest||data.bills.filter(item=>item.tenor_days===row.tenor).length<2));
+  const valid=positions.every(row=>Number.isFinite(row.value)&&row.value>=0&&Number.isFinite(row.expected)&&Number.isFinite(row.volatility)&&row.volatility>=0)&&
+    Number.isFinite(Number(bondReturn))&&Number(bondReturn)>=-100&&Number(bondReturn)<=100&&
+    Number.isFinite(Number(bondVol))&&Number(bondVol)>=0&&Number(bondVol)<=100&&
+    Number.isFinite(Number(cashReturn))&&Number(cashReturn)>=-100&&Number(cashReturn)<=100&&
+    Number.isFinite(Number(cashVol))&&Number(cashVol)>=0&&Number(cashVol)<=100&&!missingBillHistory;
+  const active=valid?positions.filter(row=>row.value>0):[];
   const engine=active.length?portfolioMetrics(active.map(row=>({name:row.name,value:row.value,expected_return:row.expected,volatility:row.volatility}))):null;
   const total=engine?.total_value||0;
   const alloc=active.map((row,i)=>({...row,weight:engine?.allocation[i].weight||0,annualPnl:row.value*row.expected}));
@@ -624,7 +629,7 @@ function PortfolioIntelligence({data}:{data:MarketPayload}){
         <Field label="Cash expected return (%)" value={cashReturn} onChange={setCashReturn} min="-100" max="100"/>
         <Field label="Cash volatility (%)" value={cashVol} onChange={setCashVol} min="0" max="100"/>
       </div>
-      {!valid||total<=0?<NoData message="Enter finite, non-negative KES position values and valid return and volatility assumptions. At least one position must have a positive value."/>:
+      {!valid||total<=0?<NoData message={missingBillHistory?"A Treasury bill position needs a latest CBK auction yield and at least two historical auctions for its risk estimate. Reduce that position to zero or restore the missing auction history.":"Enter finite, non-negative KES position values, valid return and volatility assumptions, and at least one positive position value."}/>:
       <Table headers={["Position","Value","Expected annual return","Return source"]} rows={alloc.map(row=>[
         row.name,money(row.value),pct(row.expected,3),row.isTbill?(row.latest?.date||"No CBK yield available"):"User assumption"
       ])}/>}
@@ -833,7 +838,7 @@ function Backtesting({data}:{data:MarketPayload}){
     let signal=0;
     if(isFx){
       if(mean(values.slice(i-s,i))>mean(values.slice(i-l,i)))signal=1;
-    }else if(values[i-1]>mean(values.slice(i-s-1,i-1))){
+    }else if(values[i-1]<mean(values.slice(i-s-1,i-1))){
       signal=1;
     }
     const changed=signal!==position;
@@ -873,7 +878,7 @@ function Backtesting({data}:{data:MarketPayload}){
         ["Trading cost","User-specified basis points on each entry or exit"],
         ["Excluded factors","Spread, slippage, funding, taxes, liquidity and execution constraints"]
       ]}/>:<Table headers={["Rule","Implementation"]} rows={[
-        ["Entry","Previous observed yield above the mean of the prior lookback window"],
+        ["Entry","Previous observed yield below the prior lookback mean (falling yields support the long price proxy)"],
         ["Position","Long a duration-based price proxy while the yield-momentum signal is positive; otherwise cash"],
         ["Price approximation","Daily price return ≈ − sensitivity multiplier × change in yield"],
         ["Timing","Signal uses prior yields before the current yield change is applied"],
@@ -897,15 +902,16 @@ function StressTesting({data}:{data:MarketPayload}){
   const selectedBill=latestAuction.find(row=>row.tenor_days===tenor)||data.bills.filter(row=>row.tenor_days===tenor).sort((x,y)=>x.date.localeCompare(y.date)).at(-1);
   const effectiveRate=tbillRateOverride===""?(selectedBill?.rate??.09):Number(tbillRateOverride)/100;
   const valid=[value,shock,bond,mod,conv,tbill,tenor,effectiveRate].every(Number.isFinite)&&value>0&&shock>-1&&shock<=5&&bond>0&&mod>=0&&mod<=100&&conv>=0&&conv<=10000&&tbill>=0&&[91,182,364].includes(tenor)&&effectiveRate>=0&&effectiveRate<=1;
-  const capitalScenario=applyShock(value,shock);
-  const stressed=capitalScenario.ending_value;
+  const capitalValid=Number.isFinite(value)&&value>0&&Number.isFinite(shock)&&shock>-1&&shock<=5;
+  const capitalScenario=capitalValid?applyShock(value,shock):null;
+  const stressed=capitalScenario?.ending_value??0;
   const scenarios=[-30,-20,-15,-10,-5,0,5,10,15,20].map(x=>({shock:x,value:value*(1+x/100),pnl:value*x/100}));
   const startingFixedIncome=bond+tbill;
-  const fixedIncomeRows=cbkRateScenarios().map(item=>{
+  const fixedIncomeRows=valid?cbkRateScenarios().map(item=>{
     const bondPnl=bondPriceShock(bond,mod,conv,item.rate_change).change;
     const tbillPnl=treasuryBillReinvestmentShock(tbill,effectiveRate,item.rate_change,tenor).income_change;
     return {name:item.name,change:item.rate_change,bondPnl,tbillPnl,totalPnl:bondPnl+tbillPnl,ending:startingFixedIncome+bondPnl+tbillPnl};
-  });
+  }):[];
   const curveRates=[91,182,364].map(days=>({days,row:latestAuction.find(x=>x.tenor_days===days)})).filter((x): x is {days:number;row:BillRow}=>x.row!==undefined);
   const observedCurve=Object.fromEntries(curveRates.map(({days,row})=>[days,row.rate])) as Record<number,number>;
   const steepened=curveScenario(observedCurve,-.005,.005);
@@ -916,7 +922,7 @@ function StressTesting({data}:{data:MarketPayload}){
   return <div className="workspace-stack">
     <Panel title="Capital market shock" note="Apply a direct percentage shock to a user-entered portfolio reference value">
       <div className="metric-grid"><Field label="Reference portfolio value (KES)" value={capital} onChange={setCapital} min="1"/><Field label="Market shock (%)" value={fxShock} onChange={setFxShock} min="-99" max="500"/></div>
-      {Number.isFinite(value)&&value>0&&Number.isFinite(shock)&&shock>-1&&shock<=5?<><div className="metric-grid"><Metric label="Starting value" value={money(value)}/><Metric label="Profit / loss" value={money(stressed-value)}/><Metric label="Stressed value" value={money(stressed)}/><Metric label="Applied shock" value={pct(shock)}/></div><Table headers={["Scenario","Profit / loss","Stressed value"]} rows={scenarios.map(row=>[row.shock+"%",money(row.pnl),money(row.value)])}/></>:<NoData message="Use a positive reference value and a market shock above −100% and no greater than +500%."/>}
+      {capitalValid?<><div className="metric-grid"><Metric label="Starting value" value={money(value)}/><Metric label="Profit / loss" value={money(stressed-value)}/><Metric label="Stressed value" value={money(stressed)}/><Metric label="Applied shock" value={pct(shock)}/></div><Table headers={["Scenario","Profit / loss","Stressed value"]} rows={scenarios.map(row=>[row.shock+"%",money(row.pnl),money(row.value)])}/></>:<NoData message="Use a positive reference value and a market shock above −100% and no greater than +500%."/>}
     </Panel>
     <Panel title="CBK rate scenarios" note="Combined bond duration-convexity impact and Treasury bill reinvestment-income change">
       <div className="metric-grid">
