@@ -431,59 +431,126 @@ function RiskIntelligence({data}:{data:MarketPayload}){
 }
 
 function HistoricalExplorer({data}:{data:MarketPayload}){
-  const [kind,setKind]=useState("FX"),[pair,setPair]=useState("All"),[tenor,setTenor]=useState("All"),[from,setFrom]=useState(""),[to,setTo]=useState(""),[search,setSearch]=useState("");
-  const fx=data.fx.filter(x=>(pair==="All"||x.instrument===pair)&&(!from||x.date>=from)&&(!to||x.date<=to)&&(!search||x.source.toLowerCase().includes(search.toLowerCase())||x.date.includes(search)));
-  const bills=data.bills.filter(x=>(tenor==="All"||x.tenor_days===Number(tenor))&&(!from||x.date>=from)&&(!to||x.date<=to)&&(!search||x.source.toLowerCase().includes(search.toLowerCase())||x.date.includes(search)));
-  const exportRows=kind==="FX"?fx.map(x=>[x.date,x.instrument,x.value,x.source]):bills.map(x=>[x.date,x.tenor_days,x.rate,x.issue_number||"",x.source]);
-  const headers=kind==="FX"?["Date","Instrument","Rate","Source"]:["Auction date","Tenor days","Market-weighted rate","Issue number","Source"];
-  return <div className="workspace-stack">
-    <Panel title="Historical observation explorer" note="Filter the underlying records; export contains only the rows currently displayed">
-      <div className="filter-grid">
-        <label className="field"><span>Dataset</span><select className="search" value={kind} onChange={e=>setKind(e.target.value)}><option>FX</option><option>Treasury bills</option></select></label>
+  const [kind,setKind]=useState("FX");
+  const [pair,setPair]=useState("All");
+  const [tenor,setTenor]=useState("All");
+  const [from,setFrom]=useState("");
+  const [to,setTo]=useState("");
+  const [search,setSearch]=useState("");
+  const [view,setView]=useState<"chart"|"records">("chart");
+
+  const query=search.trim().toLowerCase();
+  const fx=data.fx.filter(row=>
+    (pair==="All"||row.instrument===pair)&&
+    (!from||row.date>=from)&&(!to||row.date<=to)&&
+    (!query||row.source.toLowerCase().includes(query)||row.date.includes(query)||row.instrument.toLowerCase().includes(query))
+  ).sort((a,b)=>a.date.localeCompare(b.date));
+  const bills=data.bills.filter(row=>
+    (tenor==="All"||row.tenor_days===Number(tenor))&&
+    (!from||row.date>=from)&&(!to||row.date<=to)&&
+    (!query||row.source.toLowerCase().includes(query)||row.date.includes(query)||String(row.issue_number||"").toLowerCase().includes(query))
+  ).sort((a,b)=>a.date.localeCompare(b.date));
+
+  const fxChartRows=(()=>{
+    const byDate=new Map<string,Record<string,number|string|null>>();
+    for(const row of fx){
+      if(!byDate.has(row.date))byDate.set(row.date,{date:row.date});
+      const entry=byDate.get(row.date)!;
+      entry[row.instrument.replace("/","_")]=row.value;
+    }
+    return [...byDate.values()];
+  })();
+  const billChartRows=(()=>{
+    const byDate=new Map<string,Record<string,number|string|null>>();
+    for(const row of bills){
+      if(!byDate.has(row.date))byDate.set(row.date,{date:row.date});
+      const entry=byDate.get(row.date)!;
+      entry["TBILL_"+row.tenor_days]=row.rate*100;
+    }
+    return [...byDate.values()];
+  })();
+
+  const count=kind==="FX"?fx.length:bills.length;
+  const dateRows=kind==="FX"?fx:bills;
+  const firstDate=dateRows[0]?.date||"—";
+  const lastDate=dateRows.at(-1)?.date||"—";
+  const headers=kind==="FX"?["Date","Currency pair","KES per unit","Source"]:["Auction date","Tenor","Accepted yield","Issue number","Source"];
+  const exportRows=kind==="FX"
+    ?fx.map(row=>[row.date,row.instrument,row.value,row.source])
+    :bills.map(row=>[row.date,row.tenor_days,row.rate,row.issue_number||"",row.source]);
+  const visibleRows=[...exportRows].reverse().map(row=>
+    kind==="FX"
+      ?[row[0],row[1],Number(row[2]).toFixed(4),row[3]]
+      :[row[0],row[1]+" days",pct(Number(row[2]),4),row[3],row[4]]
+  );
+
+  const clearFilters=()=>{
+    setPair("All");setTenor("All");setFrom("");setTo("");setSearch("");
+  };
+
+  return <div className="workspace-stack explorer-workspace">
+    <Panel title="Historical market explorer" note="Choose a dataset, narrow the observation window and inspect the results without leaving the filter area">
+      <div className="explorer-filter-grid">
+        <label className="field"><span>Dataset</span><select className="search" value={kind} onChange={event=>{setKind(event.target.value);setView("chart");}}><option>FX</option><option>Treasury bills</option></select></label>
         {kind==="FX"
-          ? <label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}><option>All</option>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label>
-          : <label className="field"><span>Tenor</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}><option>All</option>{TENORS.map(x=><option key={x} value={x}>{x} days</option>)}</select></label>}
-        <label className="field"><span>From</span><input className="search" type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
-        <label className="field"><span>To</span><input className="search" type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
-        <label className="field"><span>Search source or date</span><input className="search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Type to filter"/></label>
+          ?<label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={event=>setPair(event.target.value)}><option>All pairs</option>{PAIRS.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+          :<label className="field"><span>Bill tenor</span><select className="search" value={tenor} onChange={event=>setTenor(event.target.value)}><option value="All">All tenors</option>{TENORS.map(value=><option key={value} value={value}>{value} days</option>)}</select></label>}
+        <label className="field"><span>From date</span><input className="search" type="date" value={from} max={to||undefined} onChange={event=>setFrom(event.target.value)}/></label>
+        <label className="field"><span>To date</span><input className="search" type="date" value={to} min={from||undefined} onChange={event=>setTo(event.target.value)}/></label>
+        <label className="field"><span>Search date, pair or source</span><input className="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Type to filter"/></label>
       </div>
-      <div className="panel-head"><span className="panel-note">{exportRows.length.toLocaleString("en-KE")} records match the filters</span><button className="primary-btn" onClick={()=>csvDownload(kind==="FX"?"kfa-fx-observations.csv":"kfa-treasury-bill-observations.csv",headers,exportRows)}>Export CSV</button></div>
-      {kind==="FX"?<Table headers={headers} rows={[...exportRows].reverse().map(row=>[row[0],row[1],Number(row[2]).toFixed(4),row[3]])}/>:<Table headers={headers} rows={[...exportRows].reverse().map(row=>[row[0],row[1],pct(Number(row[2]),4),row[3],row[4]])}/>}
+      <div className="explorer-toolbar">
+        <div className="explorer-result-meta">
+          <strong>{count.toLocaleString("en-KE")} records</strong>
+          <span>{firstDate} to {lastDate}</span>
+          <button className="explorer-reset" onClick={clearFilters}>Reset filters</button>
+        </div>
+        <button className="primary-btn" disabled={count===0} onClick={()=>csvDownload(kind==="FX"?"KFA_FX_Historical_Observations.csv":"KFA_Treasury_Bill_Historical_Observations.csv",headers,exportRows)}>Export filtered CSV</button>
+      </div>
+      <div className="explorer-mobile-tabs" role="tablist" aria-label="Historical explorer view">
+        <button type="button" role="tab" aria-selected={view==="chart"} className={view==="chart"?"active":""} onClick={()=>setView("chart")}>Chart</button>
+        <button type="button" role="tab" aria-selected={view==="records"} className={view==="records"?"active":""} onClick={()=>setView("records")}>Records ({count})</button>
+      </div>
     </Panel>
 
-    <Panel title={kind==="FX"?"Filtered FX history":"Filtered Treasury bill yield history"} note="The plot follows the active date, instrument and search filters above">
-      {kind==="FX"?(
-        <ChartFrame height={300}><ResponsiveContainer><LineChart data={[...new Set(fx.map(x=>x.date))].sort().map(date=>{
-          const rows=fx.filter(x=>x.date===date);
-          return {date,USD_KES:rows.find(x=>x.instrument==="USD/KES")?.value??null,GBP_KES:rows.find(x=>x.instrument==="GBP/KES")?.value??null,EUR_KES:rows.find(x=>x.instrument==="EUR/KES")?.value??null};
-        })}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
-          <XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/>
-          <YAxis tick={{fontSize:10,fill:"#8291a0"}}/>
-          <ChartTooltip/>
-          {(pair==="All"||pair==="USD/KES")&&<Line dataKey="USD_KES" name="USD/KES" stroke="#087f8c" strokeWidth={2} dot={false} connectNulls={false}/>}
-          {(pair==="All"||pair==="GBP/KES")&&<Line dataKey="GBP_KES" name="GBP/KES" stroke="#356bb3" strokeWidth={2} dot={false} connectNulls={false}/>}
-          {(pair==="All"||pair==="EUR/KES")&&<Line dataKey="EUR_KES" name="EUR/KES" stroke="#d5a43b" strokeWidth={2} dot={false} connectNulls={false}/>}
-        </LineChart></ResponsiveContainer></ChartFrame>
-      ):(
-        <ChartFrame height={300}><ResponsiveContainer><LineChart data={[...new Set(bills.map(x=>x.date))].sort().map(date=>{
-          const rows=bills.filter(x=>x.date===date);
-          return {date,TBILL_91:rows.find(x=>x.tenor_days===91)?.rate??null,TBILL_182:rows.find(x=>x.tenor_days===182)?.rate??null,TBILL_364:rows.find(x=>x.tenor_days===364)?.rate??null};
-        })}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
-          <XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/>
-          <YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/>
-          <ChartTooltip/>
-          {(tenor==="All"||tenor==="91")&&<Line dataKey="TBILL_91" name="91-day" stroke="#087f8c" strokeWidth={2} dot={false}/>}
-          {(tenor==="All"||tenor==="182")&&<Line dataKey="TBILL_182" name="182-day" stroke="#356bb3" strokeWidth={2} dot={false}/>}
-          {(tenor==="All"||tenor==="364")&&<Line dataKey="TBILL_364" name="364-day" stroke="#d5a43b" strokeWidth={2} dot={false}/>}
-        </LineChart></ResponsiveContainer></ChartFrame>
-      )}
-      <p className="panel-note">Currency pairs and Treasury bill tenors are shown as separate series. Missing dates remain gaps; the chart does not forward-fill values.</p>
-    </Panel>
+    <div className="explorer-results-grid">
+      <div className={"explorer-result-panel explorer-chart-panel "+(view==="chart"?"selected":"")}>
+        <Panel title={kind==="FX"?"Exchange-rate history":"Treasury bill yield history"} note={kind==="FX"?"KES per foreign-currency unit · daily CBK observations":"Accepted auction yield · annual percentage"}>
+          {count===0
+            ?<NoData message="No observations match these filters. Widen the date range or reset the filters."/>
+            :kind==="FX"
+              ?<ChartFrame height={300}><ResponsiveContainer><LineChart data={fxChartRows}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+                <XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/>
+                <YAxis tick={{fontSize:10,fill:"#8291a0"}} domain={["auto","auto"]}/>
+                <ChartTooltip/>
+                {(pair==="All"||pair==="USD/KES")&&<Line dataKey="USD_KES" name="USD/KES" stroke="#087f8c" strokeWidth={2} dot={false} connectNulls={false}/>}
+                {(pair==="All"||pair==="GBP/KES")&&<Line dataKey="GBP_KES" name="GBP/KES" stroke="#356bb3" strokeWidth={2} dot={false} connectNulls={false}/>}
+                {(pair==="All"||pair==="EUR/KES")&&<Line dataKey="EUR_KES" name="EUR/KES" stroke="#d5a43b" strokeWidth={2} dot={false} connectNulls={false}/>}
+              </LineChart></ResponsiveContainer></ChartFrame>
+              :<ChartFrame height={300}><ResponsiveContainer><LineChart data={billChartRows}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+                <XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/>
+                <YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%" domain={["auto","auto"]}/>
+                <ChartTooltip/>
+                {(tenor==="All"||tenor==="91")&&<Line dataKey="TBILL_91" name="91-day" stroke="#087f8c" strokeWidth={2} dot={false}/>}
+                {(tenor==="All"||tenor==="182")&&<Line dataKey="TBILL_182" name="182-day" stroke="#356bb3" strokeWidth={2} dot={false}/>}
+                {(tenor==="All"||tenor==="364")&&<Line dataKey="TBILL_364" name="364-day" stroke="#d5a43b" strokeWidth={2} dot={false}/>}
+              </LineChart></ResponsiveContainer></ChartFrame>}
+          <p className="panel-note">Missing dates remain gaps. The explorer does not forward-fill exchange rates or invent auction observations.</p>
+        </Panel>
+      </div>
+
+      <div className={"explorer-result-panel explorer-records-panel "+(view==="records"?"selected":"")}>
+        <Panel title="Observation records" note="Newest records first · scroll within this list to inspect older observations">
+          {count===0
+            ?<NoData message="There are no matching records to display."/>
+            :<div className="explorer-table-wrap"><Table headers={headers} rows={visibleRows}/></div>}
+        </Panel>
+      </div>
+    </div>
   </div>;
 }
-
 function PortfolioIntelligence({data}:{data:MarketPayload}){
   const [values,setValues]=useState({t91:"300000",t182:"300000",t364:"250000",bond:"150000",cash:"0"});
   const [bondReturn,setBondReturn]=useState("10"),[bondVol,setBondVol]=useState("8");
