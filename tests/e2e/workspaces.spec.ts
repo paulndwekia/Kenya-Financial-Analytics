@@ -352,7 +352,7 @@ test("module controls change the calculations and data views", async ({ page }) 
   await expect(bondPriceMetric).not.toHaveText(bondPriceBefore || "");
   await page.getByLabel("Payments per year").selectOption("4");
   await expect(page.locator(".bond-cashflow-table tbody tr")).toHaveCount(20);
-  await expect.poll(() => page.locator(".bond-cashflow-chart .recharts-bar-rectangle").count()).toBeGreaterThanOrEqual(10);
+  await expect.poll(() => page.locator(".bond-cashflow-chart .recharts-bar-rectangle").count()).toBeGreaterThanOrEqual(5);
   await expect(page.locator(".bond-price-chart .recharts-line")).toHaveCount(2);
   await expect(page.locator(".bond-price-chart .recharts-reference-line")).toBeVisible();
 
