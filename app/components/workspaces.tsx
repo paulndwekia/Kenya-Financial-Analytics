@@ -582,6 +582,19 @@ function ResearchIntelligence({data}:{data:MarketPayload}){
   </div>;
 }
 
+function escapeHtml(value:unknown){
+  return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
+}
+function htmlTable(headers:string[],rows:(string|number)[][]){
+  return "<table><thead><tr>"+headers.map(value=>"<th>"+escapeHtml(value)+"</th>").join("")+"</tr></thead><tbody>"+
+    rows.map(row=>"<tr>"+row.map(value=>"<td>"+escapeHtml(value)+"</td>").join("")+"</tr>").join("")+
+    "</tbody></table>";
+}
+function htmlDownload(filename:string,html:string){
+  const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+  const url=URL.createObjectURL(blob),link=document.createElement("a");
+  link.href=url;link.download=filename;link.click();URL.revokeObjectURL(url);
+}
 function FinancialReports({data}:{data:MarketPayload}){
   const generated=new Date().toLocaleString("en-KE");
   const fx=PAIRS.map(pair=>{const {rows,values,rets}=seriesFor(data.fx,pair);return {pair,rows,latest:values.at(-1),change:values.length>1?values.at(-1)!/values[0]-1:0,vol:stdev(rets)*Math.sqrt(252)};});
@@ -591,10 +604,13 @@ function FinancialReports({data}:{data:MarketPayload}){
     ...fx.map(x=>{const row=x.rows.at(-1);return ["FX",x.pair,row?.date||"",x.latest??"",pct(x.change),pct(x.vol),x.rows.length,row?.source||"",row?.source_url||""];}),
     ...latestBills.map(x=>["Treasury bill",x.tenor_days+" days",x.date,pct(x.rate,4),"","",data.bills.filter(row=>row.tenor_days===x.tenor_days).length,x.source,x.source_url||""])
   ];
+  const fxReportRows=fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest?.toFixed(4)||"—",pct(x.change),pct(x.vol),x.rows.length,x.rows.at(-1)?.source||"—"]);
+  const billReportRows=latestBills.map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.issue_number||"—",row.source]);
+  const htmlReport="<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Kenya Financial Analytics — Market Report</title><style>body{font:14px/1.6 Inter,Segoe UI,Arial,sans-serif;color:#1c3040;max-width:1100px;margin:40px auto;padding:0 24px}h1{font-size:28px;letter-spacing:-.5px}h2{font-size:17px;margin-top:32px}p,small{color:#647585}.meta{border-bottom:1px solid #dce4ea;padding-bottom:18px}table{width:100%;border-collapse:collapse;margin:12px 0 22px;font-size:12px}th,td{text-align:left;padding:9px;border-bottom:1px solid #e3e9ed}th{background:#f3f6f8;color:#44586a;font-weight:700}footer{border-top:1px solid #dce4ea;margin-top:36px;padding-top:16px;color:#647585;font-size:11px}</style></head><body><h1>Kenya Financial Analytics</h1><div class='meta'><strong>Market snapshot</strong><br>Generated: "+escapeHtml(generated)+"<br>FX latest observation: "+escapeHtml(data.health.latest_fx_observation||"Not available")+"<br>Treasury bill latest auction: "+escapeHtml(data.health.latest_bill_observation||"Not available")+"<br>Data source: Central Bank of Kenya</div><h2>Foreign exchange overview</h2>"+htmlTable(["Pair","Latest date","Latest rate","Cumulative change","Annualised volatility","Observations","Source"],fxReportRows)+"<h2>Latest Treasury bill auction</h2>"+htmlTable(["Tenor","Auction date","Market-weighted yield","Issue number","Source"],billReportRows)+"<h2>Data coverage and limitations</h2><p>The figures in this report are based on stored observations attributed to the Central Bank of Kenya. Coverage differs by instrument. Missing auction dates and tenors are not interpolated in the historical tables. Intermediate rates, where shown in the Yield Curve workspace, are model estimates and are identified separately. Volatility is a historical statistic, not a forward-looking forecast.</p><footer>Kenya Financial Analytics · For research and information only. Not investment advice.</footer></body></html>";
   return <div className="workspace-stack">
     <Panel title="Market research report" note={"Generated "+generated+" · Source: Central Bank of Kenya"}>
       <div className="metric-grid"><Metric label="FX observations" value={data.fx.length.toLocaleString("en-KE")}/><Metric label="Auction observations" value={data.bills.length.toLocaleString("en-KE")}/><Metric label="FX coverage" value={(data.fx.map(x=>x.date).sort()[0]||"—")+" to "+(data.health.latest_fx_observation||"—")}/><Metric label="Auction coverage" value={(dates[0]||"—")+" to "+(data.health.latest_bill_observation||"—")}/></div>
-      <div className="panel-head"><div><div className="panel-title">Currency market summary</div><div className="panel-note">Cumulative change over each series' available period</div></div><button className="primary-btn" onClick={()=>csvDownload("kenya-financial-analytics-report.csv",["Section","Instrument","Latest date","Latest value","Cumulative change","Annualised volatility","Observations","Source","Source URL"],exportRows)}>Download report CSV</button></div>
+      <div className="panel-head"><div><div className="panel-title">Currency market summary</div><div className="panel-note">Cumulative change over each series' available period</div></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button className="primary-btn" onClick={()=>csvDownload("kenya-financial-analytics-report.csv",["Section","Instrument","Latest date","Latest value","Cumulative change","Annualised volatility","Observations","Source","Source URL"],exportRows)}>Download report CSV</button><button className="theme-button" onClick={()=>htmlDownload("kenya-financial-analytics-report.html",htmlReport)}>Download HTML report</button></div></div>
       <Table headers={["Pair","Latest date","Latest rate","Cumulative change","Annualised volatility","Observations","Source"]} rows={fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest?.toFixed(4)||"—",pct(x.change),pct(x.vol),x.rows.length,x.rows.at(-1)?.source||"—"])}/>
     </Panel>
     <Panel title="Latest Treasury bill auction snapshot" note={latestDate||"No auction results in database"}>
