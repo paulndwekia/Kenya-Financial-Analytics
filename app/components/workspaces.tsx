@@ -609,7 +609,7 @@ function BondPricing(){
         <XAxis dataKey="yield" type="number" domain={["dataMin","dataMax"]} tick={{fontSize:10,fill:"#8291a0"}} tickFormatter={value=>Number(value).toFixed(1)} unit="%"/>
         <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={78} tickFormatter={value=>money(Number(value))}/>
         <Tooltip formatter={(value)=>money(Number(value))} labelFormatter={label=>"Yield to maturity: "+Number(label).toFixed(1)+"%"} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/>
-        <ReferenceLine x={y*100} stroke="#d5a43b" strokeDasharray="4 4" label={{value:"Current YTM",position:"insideTopRight",fill:"#a27a24",fontSize:10}}/>
+        <ReferenceLine x={y*100} xAxisId={0} ifOverflow="extendDomain" isFront stroke="#d5a43b" strokeDasharray="4 4" label={{value:"Current YTM",position:"insideTopRight",fill:"#a27a24",fontSize:10}}/>
         <Line dataKey="price" name="Full bond revaluation" stroke="#356bb3" strokeWidth={2.4} dot={false} activeDot={{r:4}}/>
         <Line dataKey="durationApproximation" name="Duration–convexity estimate" stroke="#d5a43b" strokeWidth={1.8} strokeDasharray="5 4" dot={false}/>
       </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="Valid, frequency-aligned bond terms are required before drawing the price–yield relationship."/>}
