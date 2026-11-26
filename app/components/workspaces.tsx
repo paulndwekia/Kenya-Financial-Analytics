@@ -398,7 +398,7 @@ function YieldCurve({data}:{data:MarketPayload}){
   const latestDate=dates.at(-1)||"";
   const latestCurve=data.bills.filter(row=>row.date===latestDate).sort((a,b)=>a.tenor_days-b.tenor_days);
   const curve=latestCurve.map(row=>({tenor:String(row.tenor_days),yield:row.rate*100}));
-  const short=latestCurve.find(x=>x.tenor_days===91),medium=latestCurve.find(x=>x.tenor_days===182),long=latestCurve.find(x=>x.tenor_days===364);
+  const short=latestCurve.find(x=>x.tenor_days===91),long=latestCurve.find(x=>x.tenor_days===364);
   const spread=short&&long?long.rate-short.rate:null;
   const ordered=[...latestCurve].sort((a,b)=>a.tenor_days-b.tenor_days);
   const curveRates=Object.fromEntries(ordered.map(row=>[row.tenor_days,row.rate])) as Record<number,number>;
@@ -409,7 +409,6 @@ function YieldCurve({data}:{data:MarketPayload}){
   const interpolate=(target:number):number|null=>ordered.length>=2&&target>=91&&target<=364?interpolateYield(target,curveRates):null;
   const [startDays,setStartDays]=useState("91"),[endDays,setEndDays]=useState("364");
   const start=Number(startDays),end=Number(endDays),r1=interpolate(start),r2=interpolate(end);
-  const t1=start/365,t2=end/365;
   const forwardRate=r1!==null&&r2!==null&&end>start
     ? simpleForwardRate(r1,r2,start,end)
     : null;
@@ -425,7 +424,7 @@ function YieldCurve({data}:{data:MarketPayload}){
         {TENORS.map(tenor=>{const row=latestCurve.find(x=>x.tenor_days===tenor);return <Metric key={tenor} label={tenor+"-day spot yield"} value={row?pct(row.rate,4):"—"} note={row?.issue_number||"No observation for this auction"}/>})}
         <Metric label="364s–91s spread" value={spread===null?"—":pp(spread,3)} note={shape}/>
       </div>
-      {curve.length>=2?<ChartFrame height={300}><ResponsiveContainer><LineChart data={curve}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="tenor" tick={{fontSize:11,fill:"#8291a0"}} label={{value:"Tenor (days)",position:"insideBottom",offset:-3,fontSize:10}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Line dataKey="yield" name="Auction yield" stroke="#356bb3" strokeWidth={2.5} dot={{r:5,fill:"#356bb3"}}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="The latest auction does not contain two or more tenors on the same date. No missing observations have been estimated."/>}
+      {curve.length>=2?<ChartFrame height={300} className="yield-curve-chart"><ResponsiveContainer><LineChart data={curve}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="tenor" tick={{fontSize:11,fill:"#8291a0"}} label={{value:"Tenor (days)",position:"insideBottom",offset:-3,fontSize:10}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Line dataKey="yield" name="Auction yield" stroke="#356bb3" strokeWidth={2.5} dot={{r:5,fill:"#356bb3"}}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="The latest auction does not contain two or more tenors on the same date. No missing observations have been estimated."/>}
       <div className="panel-note">Only observed tenors from the same auction date are plotted. Missing tenors are left missing; the curve never combines separate auction dates.</div>
       <div className="yield-curve-slope-table">
         <Table headers={["Observed segment","Yield difference","Reading"]} rows={slopeRows.map(row=>[
@@ -438,7 +437,7 @@ function YieldCurve({data}:{data:MarketPayload}){
         const value=interpolate(day);
         return [day+" days",value===null?"Not available":pct(value,4),value===null?"Outside observed support":"Linear between adjacent observed tenors"];
       })}/>
-      <p className="panel-note">These intermediate maturities are model estimates, not separate CBK auction observations. Values are not extrapolated outside the published 91–364 day range.</p>
+      <p className="panel-note">These intermediate maturities are model estimates, not separate CBK auction observations. Values are not extrapolated beyond the shortest and longest observed tenors in this auction.</p>
     </Panel>
     <Panel title="Implied forward rate" note="Annualised simple forward yield derived using the 365-day Treasury bill investment-yield convention">
       <div className="control-row">
