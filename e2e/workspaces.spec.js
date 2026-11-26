@@ -92,17 +92,17 @@ test.beforeEach(async ({ page }) => {
 
 test("all 16 workspaces are distinct and sidebar navigation reaches each module", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator(".status-pill")).to_contain_text("NEON DATABASE");
-  await expect(page.locator("aside .nav-item")).to_have_count(16);
+  await expect(page.locator(".status-pill")).toContainText("NEON DATABASE");
+  await expect(page.locator("aside .nav-item")).toHaveCount(16);
 
   const seenTitles = new Set();
   for (const [name, expectedPanel] of moduleChecks) {
     await page.locator("aside .nav-item").filter({ hasText: name }).click();
-    await expect(page.locator(".page-title")).to_have_text(name === "Dashboard" ? "Market overview" : name);
-    await expect(page.locator(".workspace-stack .panel-title").first()).to_have_text(expectedPanel);
+    await expect(page.locator(".page-title")).toHaveText(name === "Dashboard" ? "Market overview" : name);
+    await expect(page.locator(".workspace-stack .panel-title").first()).toHaveText(expectedPanel);
     seenTitles.add(await page.locator(".workspace-stack .panel-title").first().inner_text());
     if (name !== "Dashboard") {
-      await expect(page).to_have_url(new RegExp("\\?module=" + encodeURIComponent(name)));
+      await expect(page).toHaveURL(new RegExp("\\?module=" + encodeURIComponent(name)));
     }
   }
   expect(seenTitles.size).toBe(16);
@@ -111,43 +111,43 @@ test("all 16 workspaces are distinct and sidebar navigation reaches each module"
 test("module URLs work directly and browser back/forward restores the previous workspace", async ({ page }) => {
   await page.goto("/");
   await page.locator("aside .nav-item").filter({ hasText: "Bond Pricing" }).click();
-  await expect(page.locator(".page-title")).to_have_text("Bond Pricing");
+  await expect(page.locator(".page-title")).toHaveText("Bond Pricing");
   await page.locator("aside .nav-item").filter({ hasText: "Options & Greeks" }).click();
-  await expect(page.locator(".page-title")).to_have_text("Options & Greeks");
+  await expect(page.locator(".page-title")).toHaveText("Options & Greeks");
   await page.goBack();
-  await expect(page.locator(".page-title")).to_have_text("Bond Pricing");
+  await expect(page.locator(".page-title")).toHaveText("Bond Pricing");
   await page.goBack();
-  await expect(page.locator(".page-title")).to_have_text("Market overview");
+  await expect(page.locator(".page-title")).toHaveText("Market overview");
   await page.goForward();
-  await expect(page.locator(".page-title")).to_have_text("Bond Pricing");
+  await expect(page.locator(".page-title")).toHaveText("Bond Pricing");
   await page.goto("/?module=Bond%20Pricing");
-  await expect(page.locator(".page-title")).to_have_text("Bond Pricing");
+  await expect(page.locator(".page-title")).toHaveText("Bond Pricing");
 });
 
 test("market intelligence, curve shape, and auction risk have different outputs", async ({ page }) => {
   await page.goto("/?module=Market%20Intelligence");
-  await expect(page.getByText("Currency comparison")).to_be_visible();
-  await expect(page.getByText("Daily percentage move")).to_be_visible();
+  await expect(page.getByText("Currency comparison")).toBeVisible();
+  await expect(page.getByText("Daily percentage move")).toBeVisible();
 
   await page.goto("/?module=Yield%20Curve");
-  await expect(page.getByText("Latest recorded auction curve")).to_be_visible();
-  await expect(page.getByText("364s–91s spread")).to_be_visible();
-  await expect(page.getByText("Curve history")).to_be_visible();
+  await expect(page.getByText("Latest recorded auction curve")).toBeVisible();
+  await expect(page.getByText("364s–91s spread")).toBeVisible();
+  await expect(page.getByText("Curve history")).toBeVisible();
 
   await page.goto("/?module=Risk%20Intelligence");
-  await expect(page.getByText("Treasury yield risk overview")).to_be_visible();
-  await expect(page.getByText("91-day interpretation")).to_be_visible();
+  await expect(page.getByText("Treasury yield risk overview")).toBeVisible();
+  await expect(page.getByText("91-day interpretation")).toBeVisible();
 });
 
 test("portfolio intelligence and financial reports expose distinct comparisons and exports", async ({ page }) => {
   await page.goto("/?module=Portfolio%20Intelligence");
-  await expect(page.getByText("Relative performance")).to_be_visible();
-  await expect(page.getByText("Daily-return correlation")).to_be_visible();
-  await expect(page.getByText("Risk and return profile")).to_be_visible();
+  await expect(page.getByText("Relative performance")).toBeVisible();
+  await expect(page.getByText("Daily-return correlation")).toBeVisible();
+  await expect(page.getByText("Risk and return profile")).toBeVisible();
 
   await page.goto("/?module=Financial%20Reports");
-  await expect(page.getByText("Market research report")).to_be_visible();
-  await expect(page.getByText("Latest Treasury bill auction snapshot")).to_be_visible();
+  await expect(page.getByText("Market research report")).toBeVisible();
+  await expect(page.getByText("Latest Treasury bill auction snapshot")).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Download report CSV" }).click();
   const download = await downloadPromise;
@@ -158,21 +158,21 @@ test("mobile navigation opens, selects a module and closes", async ({ page }) =>
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await page.getByRole("button", { name: "Open navigation" }).click();
-  await expect(page.locator(".sidebar.open")).to_be_visible();
+  await expect(page.locator(".sidebar.open")).toBeVisible();
   await page.locator(".sidebar.open .nav-item").filter({ hasText: "Treasury Bills" }).click();
-  await expect(page.locator(".page-title")).to_have_text("Treasury Bills");
-  await expect(page.locator(".sidebar.open")).to_have_count(0);
+  await expect(page.locator(".page-title")).toHaveText("Treasury Bills");
+  await expect(page.locator(".sidebar.open")).toHaveCount(0);
 });
 
 test("Treasury bill calculator and auction history respond to input", async ({ page }) => {
   await page.goto("/?module=Treasury%20Bills");
-  await expect(page.locator(".page-title")).to_have_text("Treasury Bills");
-  await expect(page.getByText("14 observations")).to_be_visible();
+  await expect(page.locator(".page-title")).toHaveText("Treasury Bills");
+  await expect(page.getByText("14 observations")).toBeVisible();
   await page.getByLabel("Face value (KES)").fill("50000");
   await page.getByLabel("Annual investment yield (%)").fill("9");
   await page.getByLabel("Days to maturity").fill("182");
-  await expect(page.locator(".metric-card").filter({ hasText: "Estimated purchase price" })).to_be_visible();
-  await expect(page.locator(".metric-card").filter({ hasText: "Estimated purchase price" })).not.to_contain_text("KES 0.00");
+  await expect(page.locator(".metric-card").filter({ hasText: "Estimated purchase price" })).toBeVisible();
+  await expect(page.locator(".metric-card").filter({ hasText: "Estimated purchase price" })).not.toContainText("KES 0.00");
 });
 
 test("bond pricing recalculates and retains the full cash-flow schedule", async ({ page }) => {
@@ -181,70 +181,70 @@ test("bond pricing recalculates and retains the full cash-flow schedule", async 
   await page.getByLabel("Annual coupon rate (%)").fill("12");
   await page.getByLabel("Yield to maturity (%)").fill("13");
   await page.getByLabel("Years to maturity").fill("5");
-  await expect(page.getByText("Scheduled cash flows")).to_be_visible();
-  await expect(page.locator(".metric-card").filter({ hasText: "Model clean price" })).to_be_visible();
-  await expect(page.locator(".metric-card").filter({ hasText: "Model clean price" })).not.to_contain_text("KES 0.00");
+  await expect(page.getByText("Scheduled cash flows")).toBeVisible();
+  await expect(page.locator(".metric-card").filter({ hasText: "Model clean price" })).toBeVisible();
+  await expect(page.locator(".metric-card").filter({ hasText: "Model clean price" })).not.toContainText("KES 0.00");
 });
 
 test("options calculator switches call and put and returns the Greeks", async ({ page }) => {
   await page.goto("/?module=Options%20%26%20Greeks");
-  await expect(page.getByText("Black–Scholes model")).to_be_visible();
-  await expect(page.locator(".metric-card").filter({ hasText: "Call model value" })).to_be_visible();
+  await expect(page.getByText("Black–Scholes model")).toBeVisible();
+  await expect(page.locator(".metric-card").filter({ hasText: "Call model value" })).toBeVisible();
   await page.locator(".panel select").selectOption("Put");
-  await expect(page.locator(".metric-card").filter({ hasText: "Put model value" })).to_be_visible();
-  await expect(page.getByText("Delta", { exact: true })).to_be_visible();
-  await expect(page.getByText("Gamma", { exact: true })).to_be_visible();
+  await expect(page.locator(".metric-card").filter({ hasText: "Put model value" })).toBeVisible();
+  await expect(page.getByText("Delta", { exact: true })).toBeVisible();
+  await expect(page.getByText("Gamma", { exact: true })).toBeVisible();
 });
 
 test("risk, research and backtesting screens run their own calculations", async ({ page }) => {
   await page.goto("/?module=Risk%20Analysis");
-  await expect(page.getByText("Historical VaR · 95%")).to_be_visible();
-  await expect(page.getByText("Expected shortfall")).to_be_visible();
+  await expect(page.getByText("Historical VaR · 95%")).toBeVisible();
+  await expect(page.getByText("Expected shortfall")).toBeVisible();
 
   await page.goto("/?module=Research%20Intelligence");
-  await expect(page.getByText("Moving-average research")).to_be_visible();
+  await expect(page.getByText("Moving-average research")).toBeVisible();
   await page.getByLabel("Short window").fill("5");
   await page.getByLabel("Long window").fill("30");
-  await expect(page.getByText("5-observation average")).to_be_visible();
+  await expect(page.getByText("5-observation average")).toBeVisible();
 
   await page.goto("/?module=Backtesting");
-  await expect(page.getByText("Moving-average strategy test")).to_be_visible();
+  await expect(page.getByText("Moving-average strategy test")).toBeVisible();
   await page.getByLabel("Short average (observations)").fill("5");
   await page.getByLabel("Long average (observations)").fill("30");
   await page.getByLabel("Cost per position change (basis points)").fill("2");
-  await expect(page.getByText("Strategy cumulative return")).to_be_visible();
-  await expect(page.getByText("Buy-and-hold return")).to_be_visible();
+  await expect(page.getByText("Strategy cumulative return")).toBeVisible();
+  await expect(page.getByText("Buy-and-hold return")).toBeVisible();
 });
 
 test("portfolio weights validate to 100 percent and the basket view updates", async ({ page }) => {
   await page.goto("/?module=Portfolio");
-  await expect(page.getByText("Currency exposure basket")).to_be_visible();
-  await expect(page.getByText("Fully allocated")).to_be_visible();
+  await expect(page.getByText("Currency exposure basket")).toBeVisible();
+  await expect(page.getByText("Fully allocated")).toBeVisible();
   await page.getByLabel("USD/KES weight (%)").fill("50");
-  await expect(page.getByText("Set weights to exactly 100%")).to_be_visible();
+  await expect(page.getByText("Set weights to exactly 100%")).toBeVisible();
   await page.getByLabel("USD/KES weight (%)").fill("40");
-  await expect(page.getByText("Weighted basket history")).to_be_visible();
+  await expect(page.getByText("Weighted basket history")).toBeVisible();
 });
 
 test("historical explorer filters and exports the displayed data", async ({ page }) => {
   await page.goto("/?module=Historical%20Market%20Explorer");
-  await expect(page.getByText("Historical observation explorer")).to_be_visible();
+  await expect(page.getByText("Historical observation explorer")).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export CSV" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toContain("kfa-fx-observations.csv");
   await page.locator(".filter-grid select").nth(0).selectOption("Treasury bills");
-  await expect(page.getByLabel("Tenor")).to_be_visible();
-  await expect(page.getByLabel("Currency pair")).to_have_count(0);
+  await expect(page.getByLabel("Tenor")).toBeVisible();
+  await expect(page.getByLabel("Currency pair")).toHaveCount(0);
   await page.locator(".filter-grid select").nth(1).selectOption("91");
-  await expect(page.getByText("91 days", { exact: true }).first()).to_be_visible();
+  await expect(page.getByText("91 days", { exact: true }).first()).toBeVisible();
 });
 
 test("stress scenarios reject impossible values and recalculate valid shocks", async ({ page }) => {
   await page.goto("/?module=Stress%20Testing");
-  await expect(page.getByText("Capital shock scenarios")).to_be_visible();
+  await expect(page.getByText("Capital shock scenarios")).toBeVisible();
   await page.getByLabel("Selected FX shock (%)").fill("-100");
-  await expect(page.getByText(/Use positive capital and bond value/)).to_be_visible();
+  await expect(page.getByText(/Use positive capital and bond value/)).toBeVisible();
   await page.getByLabel("Selected FX shock (%)").fill("-15");
-  await expect(page.getByText("Stressed value")).to_be_visible();
+  await expect(page.getByText("Stressed value")).toBeVisible();
 });
