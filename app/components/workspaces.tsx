@@ -236,14 +236,21 @@ function TreasuryBills({data}:{data:MarketPayload}){
     const purchase=row&&capital>0?treasuryBillPrice(capital,row.rate,days):null;
     return {days,row,purchase,discount:purchase===null?null:capital-purchase};
   });
-  return <div className="workspace-stack">
+  return <div className="workspace-stack treasury-workspace">
     <Panel title="Auction history by tenor" note="Choose one Treasury bill maturity; published auction observations only">
-      <div className="control-row"><label className="field"><span>Tenor</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}>{TENORS.map(t=><option key={t} value={t}>{t}-day Treasury bill</option>)}</select></label><Metric label="Latest market-weighted yield" value={rates.length?pct(rates.at(-1)!,4):"—"} note={rows.at(-1)?.date||"No auction record"}/><Metric label="Historical average" value={rates.length?pct(mean(rates),4):"—"} note={rows.length+" observations"}/><Metric label="Observed range" value={rates.length?((Math.max(...rates)-Math.min(...rates))*100).toFixed(3)+" pp":"—"} note="High less low in stored history"/></div>
-      {chart.length>=2?<ChartFrame height={300}><ResponsiveContainer><LineChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Line dataKey="yield" name="Market-weighted rate" stroke="#d5a43b" strokeWidth={2.2} dot={false}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="More than one auction observation is needed to draw a history for this tenor."/>}
-      <Table headers={["Auction date","Market-weighted yield","Issue number","Source"]} rows={[...rows].reverse().map(row=>[row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/>
+      <div className="treasury-filter-row">
+        <label className="field"><span>Bill maturity</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}>{TENORS.map(t=><option key={t} value={t}>{t}-day Treasury bill</option>)}</select></label>
+      </div>
+      <div className="treasury-kpi-grid">
+        <Metric label="Latest market-weighted yield" value={rates.length?pct(rates.at(-1)!,4):"—"} note={rows.at(-1)?.date||"No auction record"}/>
+        <Metric label="Historical average" value={rates.length?pct(mean(rates),4):"—"} note={rows.length+" observations"}/>
+        <Metric label="Observed range" value={rates.length?((Math.max(...rates)-Math.min(...rates))*100).toFixed(3)+" pp":"—"} note="High less low in stored history"/>
+      </div>
+      {chart.length>=2?<ChartFrame height={270} className="treasury-chart"><ResponsiveContainer><LineChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><Tooltip formatter={(value)=>pct(Number(value)/100,4)} labelFormatter={label=>"Auction date: "+String(label)} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/><Line dataKey="yield" name="Accepted yield" stroke="#d5a43b" strokeWidth={2.2} dot={false}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="More than one auction observation is needed to draw a history for this tenor."/>}
+      <div className="treasury-history-table"><Table headers={["Auction date","Accepted yield","Issue number","Publisher"]} rows={[...rows].reverse().map(row=>[row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/></div>
     </Panel>
     <Panel title="Treasury bill purchase-price calculator" note="Investment-yield convention from the retained pricing engine; 365-day basis">
-      <div className="metric-grid"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual investment yield (%)" value={yieldRate} onChange={setYieldRate} min="0" max="100"/><Field label="Days to maturity" value={days} onChange={setDays} min="1" max="364"/></div>
+      <div className="metric-grid treasury-calculator-fields"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual investment yield (%)" value={yieldRate} onChange={setYieldRate} min="0" max="100"/><Field label="Days to maturity" value={days} onChange={setDays} min="1" max="364"/></div>
       {valid?<div className="metric-grid"><Metric label="Estimated purchase price" value={money(price)}/><Metric label="Discount to face" value={money(discount)}/><Metric label="Holding-period return" value={pct(investmentReturn)}/><Metric label="Annualised return" value={pct(annualised)} note="Profit ÷ purchase price × 365 ÷ days"/></div>:<NoData message="Enter a positive face value, a non-negative annual yield and a remaining tenor from 1 to 364 days."/>}
       <p className="panel-note">The calculator uses the investment-yield convention documented in the original Treasury Bill engine. The auction history above reports CBK market-weighted rates; enter the relevant rate and remaining days for a specific purchase-price estimate.</p>
     </Panel>
