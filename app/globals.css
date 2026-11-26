@@ -342,3 +342,28 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
  .treasury-calculator-controls{grid-template-columns:minmax(0,1fr)}
  .treasury-result-grid .metric-value{font-size:15px}
 }
+
+/* Bond Pricing: contract inputs, cash-flow schedule and valuation model comparison */
+.bond-input-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;align-items:end}
+.bond-input-grid .field{min-width:0}
+.bond-input-grid .search{width:100%;min-width:0}
+.bond-cashflow-table{max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:8px;overscroll-behavior:contain;scrollbar-width:thin}
+.bond-cashflow-table>div{overflow:visible!important}
+.bond-cashflow-table .data-table{font-variant-numeric:tabular-nums;font-size:10px;white-space:nowrap}
+.bond-cashflow-table .data-table th{position:sticky;top:0;z-index:1;background:#f1f5f8;padding:9px}
+.bond-cashflow-table .data-table td{padding:9px}
+.dark .bond-cashflow-table .data-table th{background:#26394d}
+.bond-price-chart,.bond-cashflow-chart{min-width:0;max-width:100%}
+.bond-pricing-workspace .panel-note{line-height:1.6}
+@media(max-width:1050px){.bond-input-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){
+ .bond-input-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .bond-pricing-workspace .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .bond-cashflow-table{max-height:290px}
+ .bond-cashflow-table .data-table th,.bond-cashflow-table .data-table td{padding:8px 7px}
+}
+@media(max-width:380px){
+ .bond-input-grid{grid-template-columns:minmax(0,1fr)}
+ .bond-pricing-workspace .metric-grid{grid-template-columns:minmax(0,1fr)}
+ .bond-cashflow-table{max-height:250px}
+}
