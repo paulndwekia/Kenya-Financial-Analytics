@@ -293,6 +293,26 @@ function BondPricing(){
     <Panel title="Scheduled coupon and redemption cash flows" note={periods+" payment periods · full schedule, not a sample"}>
       {valid?<Table headers={["Period","Time (years)","Coupon / redemption cash flow","Present value"]} rows={flows.map(row=>[row.period,row.time.toFixed(2),money(row.cash),money(row.pv)])}/>:<NoData message="Valid bond inputs are required to calculate the cash-flow schedule."/>}
     </Panel>
+
+    <Panel title="Bond price across yield scenarios" note="Full revaluation of the model cash flows at a range of annual yields">
+      {valid?<ChartFrame height={280}><ResponsiveContainer><LineChart data={Array.from({length:26},(_,i)=>{const yieldRate=i/100;return {yield:(yieldRate*100).toFixed(1),price:bondPrice(f,c,yieldRate,t,n)};})}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+        <XAxis dataKey="yield" tick={{fontSize:10,fill:"#8291a0"}} unit="%"/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={68}/>
+        <ChartTooltip/>
+        <Line dataKey="price" name="Bond price (KES)" stroke="#356bb3" strokeWidth={2.4} dot={false} activeDot={{r:4}}/>
+      </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="Valid bond terms are required before drawing the price–yield relationship."/>}
+      <p className="panel-note">The graph shows the inverse price–yield relationship for this bond's coupon and maturity. It reprices the cash flows at each point rather than applying the duration approximation.</p>
+    </Panel>
+    <Panel title="Coupon and redemption profile" note="Cash-flow size by payment period, with principal redemption included at maturity">
+      {valid?<ChartFrame height={250}><ResponsiveContainer><BarChart data={flows}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+        <XAxis dataKey="period" tick={{fontSize:10,fill:"#8291a0"}}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={68}/>
+        <ChartTooltip/>
+        <Bar dataKey="cash" name="Contractual cash flow (KES)" fill="#087f8c" radius={[4,4,0,0]}/>
+      </BarChart></ResponsiveContainer></ChartFrame>:<NoData message="Enter valid bond terms to generate the payment profile."/>}
+    </Panel>
   </div>;
 }
 
@@ -309,6 +329,28 @@ function OptionsGreeks(){
     </Panel>
     <Panel title="Model assumptions" note="Read before comparing model value with an observed market option price">
       <Table headers={["Input","Assumption"]} rows={[["Exercise","European, exercise only at expiry"],["Underlying","No dividends or carry adjustment"],["Volatility","Constant over the option life"],["Interest rate","Constant continuously compounded risk-free rate"],["Market frictions","No transaction costs, bid–ask spread or liquidity adjustment"]]}/>
+    </Panel>
+
+    <Panel title="Option value versus underlying price" note="Reprices the selected call or put while other Black–Scholes inputs remain fixed">
+      {valid?<ChartFrame height={280}><ResponsiveContainer><LineChart data={Array.from({length:21},(_,i)=>{const spotValue=S*(.6+i*.04);const result=blackScholes({spot:spotValue,strike:K,time:T,rate:r,volatility:sigma,type:kind as "Call"|"Put"});return {spot:spotValue.toFixed(2),optionValue:result.price,intrinsic:Math.max(kind==="Call"?spotValue-K:K-spotValue,0)};})}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+        <XAxis dataKey="spot" tick={{fontSize:10,fill:"#8291a0"}} label={{value:"Underlying price",position:"insideBottom",offset:-3,fontSize:10}}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={55}/>
+        <ChartTooltip/>
+        <Line dataKey="optionValue" name={kind+" model value"} stroke="#8064b2" strokeWidth={2.4} dot={false}/>
+        <Line dataKey="intrinsic" name="Intrinsic value" stroke="#9aa6b2" strokeDasharray="5 4" dot={false}/>
+      </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="Valid option inputs are required to plot option value against the underlying."/>}
+    </Panel>
+    <Panel title="Delta and gamma by underlying price" note="Sensitivity profile around the current spot; gamma is displayed on a separate chart scale">
+      {valid?<ChartFrame height={260}><ResponsiveContainer><LineChart data={Array.from({length:21},(_,i)=>{const spotValue=S*(.6+i*.04);const result=blackScholes({spot:spotValue,strike:K,time:T,rate:r,volatility:sigma,type:kind as "Call"|"Put"});return {spot:spotValue.toFixed(2),delta:result.delta,gamma:result.gamma};})}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+        <XAxis dataKey="spot" tick={{fontSize:10,fill:"#8291a0"}}/>
+        <YAxis yAxisId="delta" domain={[-1,1]} tick={{fontSize:10,fill:"#8291a0"}}/>
+        <YAxis yAxisId="gamma" orientation="right" tick={{fontSize:10,fill:"#8291a0"}}/>
+        <ChartTooltip/>
+        <Line yAxisId="delta" dataKey="delta" name="Delta" stroke="#087f8c" strokeWidth={2} dot={false}/>
+        <Line yAxisId="gamma" dataKey="gamma" name="Gamma" stroke="#d5a43b" strokeWidth={2} dot={false}/>
+      </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="Valid option inputs are required to plot the Greeks."/>}
     </Panel>
   </div>;
 }
@@ -407,6 +449,37 @@ function HistoricalExplorer({data}:{data:MarketPayload}){
       </div>
       <div className="panel-head"><span className="panel-note">{exportRows.length.toLocaleString("en-KE")} records match the filters</span><button className="primary-btn" onClick={()=>csvDownload(kind==="FX"?"kfa-fx-observations.csv":"kfa-treasury-bill-observations.csv",headers,exportRows)}>Export CSV</button></div>
       {kind==="FX"?<Table headers={headers} rows={[...exportRows].reverse().map(row=>[row[0],row[1],Number(row[2]).toFixed(4),row[3]])}/>:<Table headers={headers} rows={[...exportRows].reverse().map(row=>[row[0],row[1],pct(Number(row[2]),4),row[3],row[4]])}/>}
+    </Panel>
+
+    <Panel title={kind==="FX"?"Filtered FX history":"Filtered Treasury bill yield history"} note="The plot follows the active date, instrument and search filters above">
+      {kind==="FX"?(
+        <ChartFrame height={300}><ResponsiveContainer><LineChart data={[...new Set(fx.map(x=>x.date))].sort().map(date=>{
+          const rows=fx.filter(x=>x.date===date);
+          return {date,USD_KES:rows.find(x=>x.instrument==="USD/KES")?.value??null,GBP_KES:rows.find(x=>x.instrument==="GBP/KES")?.value??null,EUR_KES:rows.find(x=>x.instrument==="EUR/KES")?.value??null};
+        })}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+          <XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/>
+          <YAxis tick={{fontSize:10,fill:"#8291a0"}}/>
+          <ChartTooltip/>
+          {(pair==="All"||pair==="USD/KES")&&<Line dataKey="USD_KES" name="USD/KES" stroke="#087f8c" strokeWidth={2} dot={false} connectNulls={false}/>}
+          {(pair==="All"||pair==="GBP/KES")&&<Line dataKey="GBP_KES" name="GBP/KES" stroke="#356bb3" strokeWidth={2} dot={false} connectNulls={false}/>}
+          {(pair==="All"||pair==="EUR/KES")&&<Line dataKey="EUR_KES" name="EUR/KES" stroke="#d5a43b" strokeWidth={2} dot={false} connectNulls={false}/>}
+        </LineChart></ResponsiveContainer></ChartFrame>
+      ):(
+        <ChartFrame height={300}><ResponsiveContainer><LineChart data={[...new Set(bills.map(x=>x.date))].sort().map(date=>{
+          const rows=bills.filter(x=>x.date===date);
+          return {date,TBILL_91:rows.find(x=>x.tenor_days===91)?.rate??null,TBILL_182:rows.find(x=>x.tenor_days===182)?.rate??null,TBILL_364:rows.find(x=>x.tenor_days===364)?.rate??null};
+        })}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+          <XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/>
+          <YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/>
+          <ChartTooltip/>
+          {(tenor==="All"||tenor==="91")&&<Line dataKey="TBILL_91" name="91-day" stroke="#087f8c" strokeWidth={2} dot={false}/>}
+          {(tenor==="All"||tenor==="182")&&<Line dataKey="TBILL_182" name="182-day" stroke="#356bb3" strokeWidth={2} dot={false}/>}
+          {(tenor==="All"||tenor==="364")&&<Line dataKey="TBILL_364" name="364-day" stroke="#d5a43b" strokeWidth={2} dot={false}/>}
+        </LineChart></ResponsiveContainer></ChartFrame>
+      )}
+      <p className="panel-note">Currency pairs and Treasury bill tenors are shown as separate series. Missing dates remain gaps; the chart does not forward-fill values.</p>
     </Panel>
   </div>;
 }
@@ -519,6 +592,18 @@ function PortfolioIntelligence({data}:{data:MarketPayload}){
       ])}/>:<NoData message="No Treasury bill positions have been entered. Add a bill position to display its historical CBK yield risk contribution."/>}
       <p className="panel-note">Treasury bill portfolio risk uses a duration-based price-change proxy derived from successive CBK auction-yield changes and the actual spacing between observations. The risk table also shows raw yield-change volatility, matching the retained CBK module. This is not a traded total-return series. Bond and cash volatility are user assumptions. Portfolio VaR uses an independent-position, normal approximation.</p>
     </Panel></>:null}
+
+    <Panel title="Expected return and risk contribution" note="Per-position annual expected P&L beside its independent-position volatility contribution">
+      {alloc.length?<ChartFrame height={290}><ResponsiveContainer><BarChart data={alloc.map(row=>({position:row.name,pnl:row.annualPnl,weightedRisk:row.weight*row.volatility*100}))} layout="vertical">
+        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e7edf2"/>
+        <XAxis type="number" tick={{fontSize:10,fill:"#8291a0"}}/>
+        <YAxis dataKey="position" type="category" width={145} tick={{fontSize:10,fill:"#8291a0"}}/>
+        <ChartTooltip/>
+        <Bar dataKey="pnl" name="Expected annual P&L (KES)" fill="#16835d" radius={[0,4,4,0]}/>
+      </BarChart></ResponsiveContainer></ChartFrame>:<NoData message="Add at least one positive-value position to see its contribution."/>}
+      <Table headers={["Position","Weight","Weighted volatility contribution"]} rows={alloc.map(row=>[row.name,pct(row.weight),pct(row.weight*row.volatility)])}/>
+      <p className="panel-note">Expected return and volatility assumptions are not the same measure. The chart shows expected KES P&L; the table separately reports each position's weighted volatility contribution.</p>
+    </Panel>
   </div>;
 }
 
@@ -608,6 +693,37 @@ function FinancialReports({data}:{data:MarketPayload}){
     </Panel>
     <Panel title="Source and limitations" note="Report provenance">
       <p style={{fontSize:12,lineHeight:1.7,color:"var(--muted)",margin:0}}>Market values in this report are stored observations attributed to the Central Bank of Kenya. Data coverage may differ by instrument. No rates are estimated for missing dates or tenors. Volatility is calculated from observed daily FX changes and is not a forward-looking risk forecast.</p>
+    </Panel>
+
+    <Panel title="FX performance comparison" note="Each currency series is rebased to 100 at its own first stored observation">
+      <ChartFrame height={300}><ResponsiveContainer><LineChart data={[...new Set(data.fx.map(x=>x.date))].sort().map(date=>{
+        const result:Record<string,string|number|null>={date};
+        for(const pair of PAIRS){
+          const rows=pairRows(data.fx,pair);
+          const first=rows[0]?.value;
+          const current=rows.find(x=>x.date===date)?.value;
+          result[pair.replace("/","_")]=first&&current!==undefined?current/first*100:null;
+        }
+        return result;
+      })}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+        <XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} domain={["auto","auto"]}/>
+        <ChartTooltip/>
+        <Line dataKey="USD_KES" name="USD/KES index" stroke="#087f8c" strokeWidth={2} dot={false} connectNulls={false}/>
+        <Line dataKey="GBP_KES" name="GBP/KES index" stroke="#356bb3" strokeWidth={2} dot={false} connectNulls={false}/>
+        <Line dataKey="EUR_KES" name="EUR/KES index" stroke="#d5a43b" strokeWidth={2} dot={false} connectNulls={false}/>
+      </LineChart></ResponsiveContainer></ChartFrame>
+      <p className="panel-note">A value of 100 represents the first observation in each series. This allows relative movement to be compared without mixing the different currency quote levels.</p>
+    </Panel>
+    <Panel title="Treasury bill auction curve" note={"Matched rates from "+(latestDate||"the latest available auction date")}>
+      {latestBills.length>=2?<ChartFrame height={250}><ResponsiveContainer><LineChart data={latestBills.map(row=>({tenor:row.tenor_days+" days",yield:row.rate*100}))}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+        <XAxis dataKey="tenor" tick={{fontSize:10,fill:"#8291a0"}}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/>
+        <ChartTooltip/>
+        <Line dataKey="yield" name="Market-weighted auction yield" stroke="#d5a43b" strokeWidth={2.4} dot={{r:5}}/>
+      </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="At least two matched Treasury bill maturities are required to plot the auction curve."/>}
     </Panel>
   </div>;
 }
@@ -738,6 +854,28 @@ function StressTesting({data}:{data:MarketPayload}){
         row.days+" days",pct(row.current,4),pct(row.steep,4),pct(row.flat,4)
       ])}/>:<NoData message="At least two same-date Treasury bill tenors are required for curve scenarios."/>}
       <p className="panel-note">Steepening lowers short-tenor yields by 50 basis points and raises the 364-day yield by 50 basis points. Flattening applies the reverse shock. This is deterministic scenario analysis, not a forecast.</p>
+    </Panel>
+
+    <Panel title="Combined CBK rate-shock impact" note="Bond price effect and Treasury bill reinvestment-income change by scenario">
+      {valid?<ChartFrame height={300}><ResponsiveContainer><BarChart data={fixedIncomeRows.map(row=>({scenario:row.name.replace("CBK ",""),bond:row.bondPnl,tbill:row.tbillPnl}))}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+        <XAxis dataKey="scenario" tick={{fontSize:10,fill:"#8291a0"}}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={75}/>
+        <ReferenceLine y={0} stroke="#9aa6b2"/>
+        <ChartTooltip/>
+        <Bar dataKey="bond" name="Bond market-value change (KES)" fill="#356bb3" radius={[3,3,0,0]}/>
+        <Bar dataKey="tbill" name="T-bill income change (KES)" fill="#d5a43b" radius={[3,3,0,0]}/>
+      </BarChart></ResponsiveContainer></ChartFrame>:<NoData message="Valid bond and Treasury bill assumptions are required to plot fixed-income stress scenarios."/>}
+    </Panel>
+    <Panel title="Portfolio-value shock curve" note="Deterministic impact across a range of direct market-value shocks">
+      <ChartFrame height={260}><ResponsiveContainer><LineChart data={scenarios}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+        <XAxis dataKey="shock" tick={{fontSize:10,fill:"#8291a0"}} unit="%"/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={75}/>
+        <ReferenceLine x={0} stroke="#9aa6b2"/>
+        <ChartTooltip/>
+        <Line dataKey="value" name="Stressed portfolio value (KES)" stroke="#c45151" strokeWidth={2.4} dot={{r:3}}/>
+      </LineChart></ResponsiveContainer></ChartFrame>
     </Panel>
   </div>;
 }
