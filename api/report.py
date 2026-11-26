@@ -285,14 +285,13 @@ def build_workbook(fx, bills, refresh):
         rows = by_pair[pair]
         if not rows:
             continue
-        first_row = next((i for i, row in enumerate(fx) if row["instrument"] == pair), 0) + 1
-        last_row = first_row + len(rows) - 1
         fx_chart.add_series({
-            "name": pair,
-            "categories": ["FX History", first_row, 0, last_row, 0],
-            "values": ["FX History", first_row, 2, last_row, 2],
+            "name": ["Chart Data", 0, idx + 1],
+            "categories": ["Chart Data", 1, 0, len(all_fx_dates), 0],
+            "values": ["Chart Data", 1, idx + 1, len(all_fx_dates), idx + 1],
             "line": {"width": 2.0},
             "marker": {"type": "none"},
+            "gap": True,
         })
     fx_chart.set_title({"name": "KES exchange-rate history"})
     fx_chart.set_x_axis({"name": "CBK observation date", "date_axis": True, "num_format": "mmm-yy", "line": {"color": "#AAB7C4"}})
@@ -305,18 +304,17 @@ def build_workbook(fx, bills, refresh):
         summary.insert_chart("J4", fx_chart, {"x_offset": 6, "y_offset": 3})
 
     bill_chart = workbook.add_chart({"type": "line"})
-    for tenor_value in (91, 182, 364):
+    for idx, tenor_value in enumerate((91, 182, 364), start=1):
         rows = [row for row in bills if int(row["tenor_days"]) == tenor_value]
         if not rows:
             continue
-        first_row = next((i for i, row in enumerate(bills) if int(row["tenor_days"]) == tenor_value), 0) + 1
-        last_row = first_row + len(rows) - 1
         bill_chart.add_series({
-            "name": f"{tenor_value}-day",
-            "categories": ["Treasury Bills", first_row, 0, last_row, 0],
-            "values": ["Treasury Bills", first_row, 2, last_row, 2],
+            "name": ["Chart Data", 0, idx + 5],
+            "categories": ["Chart Data", 1, 5, len(all_bill_dates), 5],
+            "values": ["Chart Data", 1, idx + 5, len(all_bill_dates), idx + 5],
             "line": {"width": 2.0},
             "marker": {"type": "circle", "size": 3},
+            "gap": True,
         })
     bill_chart.set_title({"name": "Treasury bill auction yields"})
     bill_chart.set_x_axis({"name": "Auction date", "date_axis": True, "num_format": "mmm-yy"})
@@ -327,6 +325,28 @@ def build_workbook(fx, bills, refresh):
     bill_chart.set_size({"width": 640, "height": 300})
     if bills:
         summary.insert_chart("J21", bill_chart, {"x_offset": 6, "y_offset": 3})
+
+    # Hidden aligned series used by charts, with missing observations left blank.
+    chart_data = workbook.add_worksheet("Chart Data")
+    chart_data.hide()
+    chart_data.write_row(0, 0, ["Observation date", *pairs])
+    all_fx_dates = sorted({as_date(row["observation_date"]) for row in fx})
+    fx_lookup = {(as_date(row["observation_date"]), row["instrument"]): float(row["rate"]) for row in fx}
+    for row_idx, observation_date in enumerate(all_fx_dates, start=1):
+        chart_data.write_datetime(row_idx, 0, datetime.combine(observation_date, time.min))
+        for col_idx, pair in enumerate(pairs, start=1):
+            value = fx_lookup.get((observation_date, pair))
+            if value is not None:
+                chart_data.write_number(row_idx, col_idx, value)
+    chart_data.write_row(0, 5, ["Auction date", "91-day", "182-day", "364-day"])
+    all_bill_dates = sorted({as_date(row["auction_date"]) for row in bills})
+    bill_lookup = {(as_date(row["auction_date"]), int(row["tenor_days"])): float(row["accepted_rate"]) for row in bills}
+    for row_idx, auction_date in enumerate(all_bill_dates, start=1):
+        chart_data.write_datetime(row_idx, 5, datetime.combine(auction_date, time.min))
+        for col_idx, tenor_value in enumerate((91, 182, 364), start=6):
+            value = bill_lookup.get((auction_date, tenor_value))
+            if value is not None:
+                chart_data.write_number(row_idx, col_idx, value)
 
     # Source-level FX history
     fx_sheet = workbook.add_worksheet("FX History")
@@ -340,7 +360,12 @@ def build_workbook(fx, bills, refresh):
     fx_sheet.set_column("F:F", 55)
     fx_sheet.set_default_row(16)
     fx_headers = ["Observation date", "Currency pair", "Rate (KES / unit)", "Daily change", "Published source", "Source URL"]
-    fx_sheet.write_row(0, 0, fx_headers)
+    history_header = workbook.add_format({
+        "bold": True, "font_color": WHITE, "bg_color": NAVY,
+        "font_size": 9, "text_wrap": True, "valign": "vcenter",
+        "bottom": 2, "bottom_color": TEAL,
+    })
+    fx_sheet.write_row(0, 0, fx_headers, history_header)
     previous = {}
     for row_idx, row in enumerate(fx, start=1):
         pair = row["instrument"]
@@ -361,10 +386,9 @@ def build_workbook(fx, bills, refresh):
         else:
             fx_sheet.write(row_idx, 5, "—", fmt["body"])
     if fx:
-        fx_sheet.add_table(0, 0, len(fx), len(fx_headers) - 1, {
-            "name": "FXObservations",
-            "style": "Table Style Medium 2",
-            "columns": [{"header": header} for header in fx_headers],
+        fx_sheet.conditional_format(1, 0, len(fx), len(fx_headers) - 1, {
+            "type": "formula", "criteria": "=MOD(ROW(),2)=0",
+            "format": workbook.add_format({"bg_color": "#F6F9FB"}),
         })
         fx_sheet.conditional_format(1, 3, len(fx), 3, {"type": "3_color_scale", "min_color": "#FCEBEC", "mid_color": "#FFF4D6", "max_color": "#E8F5EE"})
         fx_sheet.autofilter(0, 0, len(fx), len(fx_headers) - 1)
@@ -381,7 +405,7 @@ def build_workbook(fx, bills, refresh):
     for col, width in enumerate(bill_widths):
         bill_sheet.set_column(col, col, width)
     bill_headers = ["Auction date", "Tenor (days)", "Accepted yield", "Price / KES 100*", "Issue number", "Amount offered (KES)", "Amount accepted (KES)", "Published source", "Source URL"]
-    bill_sheet.write_row(0, 0, bill_headers)
+    bill_sheet.write_row(0, 0, bill_headers, history_header)
     for row_idx, row in enumerate(bills, start=1):
         auction_date = as_date(row["auction_date"])
         rate = float(row["accepted_rate"])
@@ -406,10 +430,9 @@ def build_workbook(fx, bills, refresh):
         else:
             bill_sheet.write(row_idx, 8, "—", fmt["body"])
     if bills:
-        bill_sheet.add_table(0, 0, len(bills), len(bill_headers) - 1, {
-            "name": "TreasuryBillAuctions",
-            "style": "Table Style Medium 2",
-            "columns": [{"header": header} for header in bill_headers],
+        bill_sheet.conditional_format(1, 0, len(bills), len(bill_headers) - 1, {
+            "type": "formula", "criteria": "=MOD(ROW(),2)=0",
+            "format": workbook.add_format({"bg_color": "#F6F9FB"}),
         })
         bill_sheet.conditional_format(1, 2, len(bills), 2, {"type": "3_color_scale", "min_color": "#E8F5EE", "mid_color": "#FFF4D6", "max_color": "#FCEBEC"})
         bill_sheet.autofilter(0, 0, len(bills), len(bill_headers) - 1)
