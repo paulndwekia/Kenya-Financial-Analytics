@@ -52,21 +52,23 @@ class FinancialReportTests(unittest.TestCase):
             self.assertIn("FX History", workbook_xml)
             self.assertIn("Treasury Bills", workbook_xml)
             self.assertIn("Methodology", workbook_xml)
-            self.assertIn("KENYA FINANCIAL ANALYTICS", archive.read("xl/worksheets/sheet1.xml").decode("utf-8"))
-            self.assertIn("Market Research Report", workbook_xml)
+            shared_strings = archive.read("xl/sharedStrings.xml").decode("utf-8")
+            core_properties = archive.read("docProps/core.xml").decode("utf-8")
+            self.assertIn("KENYA FINANCIAL ANALYTICS", shared_strings)
+            self.assertIn("Market Research Report", core_properties)
             chart_files = [name for name in archive.namelist() if name.startswith("xl/charts/chart") and name.endswith(".xml")]
             self.assertGreaterEqual(len(chart_files), 2)
 
     def test_report_includes_all_historical_rows_in_history_sheets(self):
         output = build_workbook(self.fx, self.bills, self.refresh)
         with zipfile.ZipFile(io.BytesIO(output)) as archive:
-            fx_xml = archive.read("xl/worksheets/sheet2.xml").decode("utf-8")
+            shared_strings = archive.read("xl/sharedStrings.xml").decode("utf-8")
             bills_xml = archive.read("xl/worksheets/sheet3.xml").decode("utf-8")
-            self.assertIn("USD/KES", fx_xml)
-            self.assertIn("GBP/KES", fx_xml)
-            self.assertIn("EUR/KES", fx_xml)
-            self.assertIn("2709", bills_xml)
-            self.assertIn("182", bills_xml)
+            self.assertIn("USD/KES", shared_strings)
+            self.assertIn("GBP/KES", shared_strings)
+            self.assertIn("EUR/KES", shared_strings)
+            self.assertIn("2709/91", shared_strings)
+            self.assertIn(">182<", bills_xml)
 
 
 if __name__ == "__main__":
