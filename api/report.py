@@ -280,6 +280,29 @@ def build_workbook(fx, bills, refresh):
     summary.set_row(28, 28)
     summary.set_row(29, 18)
 
+    # Hidden aligned series used by charts, with missing observations left blank.
+    chart_data = workbook.add_worksheet("Chart Data")
+    chart_data.hide()
+    chart_data.write_row(0, 0, ["Observation date", *pairs])
+    all_fx_dates = sorted({as_date(row["observation_date"]) for row in fx})
+    fx_lookup = {(as_date(row["observation_date"]), row["instrument"]): float(row["rate"]) for row in fx}
+    for row_idx, observation_date in enumerate(all_fx_dates, start=1):
+        chart_data.write_datetime(row_idx, 0, datetime.combine(observation_date, time.min))
+        for col_idx, pair in enumerate(pairs, start=1):
+            value = fx_lookup.get((observation_date, pair))
+            if value is not None:
+                chart_data.write_number(row_idx, col_idx, value)
+    chart_data.write_row(0, 5, ["Auction date", "91-day", "182-day", "364-day"])
+    all_bill_dates = sorted({as_date(row["auction_date"]) for row in bills})
+    bill_lookup = {(as_date(row["auction_date"]), int(row["tenor_days"])): float(row["accepted_rate"]) for row in bills}
+    for row_idx, auction_date in enumerate(all_bill_dates, start=1):
+        chart_data.write_datetime(row_idx, 5, datetime.combine(auction_date, time.min))
+        for col_idx, tenor_value in enumerate((91, 182, 364), start=6):
+            value = bill_lookup.get((auction_date, tenor_value))
+            if value is not None:
+                chart_data.write_number(row_idx, col_idx, value)
+
+
     fx_chart = workbook.add_chart({"type": "line"})
     for idx, pair in enumerate(pairs):
         rows = by_pair[pair]
@@ -328,28 +351,6 @@ def build_workbook(fx, bills, refresh):
     bill_chart.set_size({"width": 640, "height": 300})
     if bills:
         summary.insert_chart("J21", bill_chart, {"x_offset": 6, "y_offset": 3})
-
-    # Hidden aligned series used by charts, with missing observations left blank.
-    chart_data = workbook.add_worksheet("Chart Data")
-    chart_data.hide()
-    chart_data.write_row(0, 0, ["Observation date", *pairs])
-    all_fx_dates = sorted({as_date(row["observation_date"]) for row in fx})
-    fx_lookup = {(as_date(row["observation_date"]), row["instrument"]): float(row["rate"]) for row in fx}
-    for row_idx, observation_date in enumerate(all_fx_dates, start=1):
-        chart_data.write_datetime(row_idx, 0, datetime.combine(observation_date, time.min))
-        for col_idx, pair in enumerate(pairs, start=1):
-            value = fx_lookup.get((observation_date, pair))
-            if value is not None:
-                chart_data.write_number(row_idx, col_idx, value)
-    chart_data.write_row(0, 5, ["Auction date", "91-day", "182-day", "364-day"])
-    all_bill_dates = sorted({as_date(row["auction_date"]) for row in bills})
-    bill_lookup = {(as_date(row["auction_date"]), int(row["tenor_days"])): float(row["accepted_rate"]) for row in bills}
-    for row_idx, auction_date in enumerate(all_bill_dates, start=1):
-        chart_data.write_datetime(row_idx, 5, datetime.combine(auction_date, time.min))
-        for col_idx, tenor_value in enumerate((91, 182, 364), start=6):
-            value = bill_lookup.get((auction_date, tenor_value))
-            if value is not None:
-                chart_data.write_number(row_idx, col_idx, value)
 
     # Source-level FX history
     fx_sheet = workbook.add_worksheet("FX History")
