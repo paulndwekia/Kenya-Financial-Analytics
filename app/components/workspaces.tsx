@@ -259,23 +259,51 @@ function TreasuryBills({data}:{data:MarketPayload}){
 
 function BondPricing(){
   const [face,setFace]=useState("100000"),[coupon,setCoupon]=useState("12"),[ytm,setYtm]=useState("13"),[years,setYears]=useState("5"),[frequency,setFrequency]=useState("2");
-  const f=Number(face),c=Number(coupon)/100,y=Number(ytm)/100,n=Math.max(1,Number(frequency)),t=Number(years);
-  const valid=[f,c,y,t,n].every(Number.isFinite)&&f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n);
-  const periods=Math.max(1,Math.round(t*n)),periodic=y/n,cashCoupon=f*c/n;
+  const [marketPrice,setMarketPrice]=useState("95000"),[shockBps,setShockBps]=useState("100");
+  const f=Number(face),c=Number(coupon)/100,y=Number(ytm)/100,n=Number(frequency),t=Number(years);
+  const observedPrice=Number(marketPrice),dy=Number(shockBps)/10000;
+  const valid=[f,c,y,n,t,observedPrice,dy].every(Number.isFinite)&&f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n)&&observedPrice>0&&Math.abs(Number(shockBps))<=5000;
+  const periods=valid?Math.max(1,Math.round(t*n)):0,cashCoupon=f*c/n,periodic=y/n;
   const flows=Array.from({length:periods},(_,i)=>({period:i+1,time:(i+1)/n,cash:cashCoupon+(i===periods-1?f:0),pv:(cashCoupon+(i===periods-1?f:0))/Math.pow(1+periodic,i+1)}));
-  const price=valid?flows.reduce((s,x)=>s+x.pv,0):0;
-  const macaulay=price?flows.reduce((s,x)=>s+x.time*x.pv,0)/price:0;
+  const price=valid?flows.reduce((sum,row)=>sum+row.pv,0):0;
+  const macaulay=price?flows.reduce((sum,row)=>sum+row.time*row.pv,0)/price:0;
   const modified=macaulay/(1+periodic);
-  const convexity=price?flows.reduce((s,x)=>s+x.period*(x.period+1)*x.cash/(n*n*Math.pow(1+periodic,x.period+2)),0)/price:0;
-  const bp=0.01,approxChange=-modified*bp+.5*convexity*bp*bp;
+  const convexity=price?flows.reduce((sum,row)=>sum+row.period*(row.period+1)*row.cash/(n*n*Math.pow(1+periodic,row.period+2)),0)/price:0;
+  const priceAt=(yieldRate:number)=>{
+    const rate=yieldRate/n;
+    return Array.from({length:periods},(_,i)=>(cashCoupon+(i===periods-1?f:0))/Math.pow(1+rate,i+1)).reduce((sum,value)=>sum+value,0);
+  };
+  const minPrice=valid?priceAt(2.0):0,maxPrice=valid?priceAt(-.99):0;
+  const ytmValid=valid&&observedPrice>=minPrice&&observedPrice<=maxPrice;
+  let low=-.99,high=2.0,impliedYtm:number|null=null;
+  if(ytmValid){
+    for(let i=0;i<120;i++){
+      const mid=(low+high)/2;
+      const estimate=priceAt(mid);
+      if(Math.abs(estimate-observedPrice)<1e-8){low=mid;high=mid;break;}
+      if(estimate>observedPrice)low=mid;else high=mid;
+    }
+    impliedYtm=(low+high)/2;
+  }
+  const estimatedChange=-modified*dy+.5*convexity*dy*dy;
+  const shockedPrice=price*(1+estimatedChange);
+  const sensitivityValid=valid&&Number.isFinite(shockedPrice)&&shockedPrice>0;
   return <div className="workspace-stack">
-    <Panel title="Fixed-rate bond valuation" note="Periodic coupon discounting; default convention is semi-annual">
-      <div className="metric-grid"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual coupon rate (%)" value={coupon} onChange={setCoupon} min="0"/><Field label="Yield to maturity (%)" value={ytm} onChange={setYtm}/><Field label="Years to maturity" value={years} onChange={setYears} min="0.01"/><label className="field"><span>Payments per year</span><select className="search" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="1">Annual</option><option value="2">Semi-annual</option><option value="4">Quarterly</option></select></label></div>
-      {valid?<div className="metric-grid"><Metric label="Model clean price" value={money(price)} note={price>f?"Premium to par":price<f?"Discount to par":"At par"}/><Metric label="Macaulay duration" value={macaulay.toFixed(4)+" years"}/><Metric label="Modified duration" value={modified.toFixed(4)} note="Approximate percentage sensitivity per 1.00 yield change"/><Metric label="Convexity" value={convexity.toFixed(4)}/></div>:<NoData message="Enter a positive face value and maturity, a non-negative coupon, and a yield greater than −100%."/>}
-      <div className="panel-note">A +1 basis-point yield move implies an approximate price change of {valid?pct(approxChange,4):"—"} using duration and convexity. This model does not include accrued interest, settlement date, day-count, call features or taxes.</div>
+    <Panel title="Fixed-rate bond valuation" note="Periodic coupon discounting with the original annual, semi-annual and quarterly payment frequencies">
+      <div className="metric-grid"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual coupon rate (%)" value={coupon} onChange={setCoupon} min="0" max="100"/><Field label="Yield to maturity (%)" value={ytm} onChange={setYtm} min="-99"/><Field label="Years to maturity" value={years} onChange={setYears} min="0.01" max="100"/><label className="field"><span>Payments per year</span><select className="search" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="1">Annual</option><option value="2">Semi-annual</option><option value="4">Quarterly</option></select></label></div>
+      {valid?<div className="metric-grid"><Metric label="Model bond price" value={money(price)} note={price>f?"Premium to par":price<f?"Discount to par":"At par"}/><Metric label="Macaulay duration" value={macaulay.toFixed(4)+" years"}/><Metric label="Modified duration" value={modified.toFixed(4)}/><Metric label="Convexity" value={convexity.toFixed(4)}/></div>:<NoData message="Enter finite, valid face value, coupon, yield, maturity and payment frequency values."/>}
+      <p className="panel-note">This is a periodic fixed-coupon model. Accrued interest, settlement date, day-count, embedded options, taxes and transaction costs are not included.</p>
     </Panel>
-    <Panel title="Scheduled cash flows" note="First 12 coupon periods; redemption is included in the final payment">
-      {valid?<Table headers={["Period","Time (years)","Cash flow","Present value"]} rows={flows.slice(0,12).map(row=>[row.period,row.time.toFixed(2),money(row.cash),money(row.pv)])}/>:<NoData message="Valid bond inputs are required to calculate cash flows."/>}
+    <Panel title="Yield to maturity solver" note="Finds the annual yield that equates the model cash flows to an observed market price">
+      <div className="metric-grid"><Field label="Observed market price (KES)" value={marketPrice} onChange={setMarketPrice} min="0.01"/></div>
+      {ytmValid?<div className="metric-grid"><Metric label="Implied yield to maturity" value={pct(impliedYtm!,4)}/><Metric label="Re-priced value" value={money(priceAt(impliedYtm!))}/><Metric label="Market price entered" value={money(observedPrice)}/></div>:<NoData message={valid?"The entered market price is outside this solver's supported yield bracket (−99% to 200%).":"Enter valid bond terms before solving for yield."}/>}
+    </Panel>
+    <Panel title="Duration and convexity price sensitivity" note="Second-order approximation for a parallel yield shock">
+      <div className="metric-grid"><Field label="Yield change (basis points)" value={shockBps} onChange={setShockBps} min="-5000" max="5000"/></div>
+      {sensitivityValid?<div className="metric-grid"><Metric label="Estimated percentage change" value={pct(estimatedChange)}/><Metric label="Current model price" value={money(price)}/><Metric label="Estimated shocked price" value={money(shockedPrice)}/><Metric label="Estimated price change" value={money(shockedPrice-price)}/></div>:<NoData message="The selected shock produces an invalid estimated price. Check the yield and shock inputs."/>}
+    </Panel>
+    <Panel title="Scheduled coupon and redemption cash flows" note={periods+" payment periods · full schedule, not a sample"}>
+      {valid?<Table headers={["Period","Time (years)","Coupon / redemption cash flow","Present value"]} rows={flows.map(row=>[row.period,row.time.toFixed(2),money(row.cash),money(row.pv)])}/>:<NoData message="Valid bond inputs are required to calculate the cash-flow schedule."/>}
     </Panel>
   </div>;
 }
