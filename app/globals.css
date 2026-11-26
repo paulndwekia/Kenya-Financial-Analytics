@@ -86,3 +86,53 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .dark .secondary-btn:hover{background:#203b50}
 .dark .report-error{background:#3d2329;color:#f2b5bb}
 @media(max-width:760px){.report-actions{justify-content:flex-start;width:100%}.report-actions button{flex:1 1 100%;}}
+
+/* Historical Market Explorer: keep filters, chart and records in one compact workspace. */
+.explorer-filter-grid{
+ display:grid;
+ grid-template-columns:minmax(118px, .85fr) minmax(128px, .9fr) minmax(132px, .9fr) minmax(132px, .9fr) minmax(180px, 1.35fr);
+ gap:10px;
+ align-items:end;
+ margin:2px 0 12px;
+}
+.explorer-filter-grid .field .search{min-width:0;width:100%;height:36px;padding:7px 9px;font-size:11px}
+.explorer-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:10px;border-top:1px solid var(--line)}
+.explorer-result-meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:10px;color:var(--muted)}
+.explorer-result-meta strong{font-size:11px;color:var(--ink)}
+.explorer-reset{border:0;background:transparent;color:var(--teal);font-size:10px;font-weight:700;text-decoration:underline;padding:4px}
+.explorer-results-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:13px;align-items:stretch}
+.explorer-result-panel{min-width:0}
+.explorer-result-panel .panel{height:100%;padding:16px}
+.explorer-result-panel .panel-head{margin-bottom:10px}
+.explorer-records-panel .panel{display:flex;flex-direction:column;min-height:365px}
+.explorer-table-wrap{max-height:390px;overflow:auto;border:1px solid var(--line);border-radius:8px;overscroll-behavior:contain;scrollbar-width:thin}
+.explorer-table-wrap>div{overflow:visible!important}
+.explorer-table-wrap .data-table{font-size:10px}
+.explorer-table-wrap .data-table th{position:sticky;top:0;z-index:1;background:#f1f5f8;padding:9px 8px}
+.explorer-table-wrap .data-table td{padding:9px 8px}
+.dark .explorer-table-wrap .data-table th{background:#26394d}
+.explorer-mobile-tabs{display:none}
+@media(max-width:1180px){
+ .explorer-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .explorer-results-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+}
+@media(max-width:760px){
+ .explorer-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .explorer-results-grid{grid-template-columns:minmax(0,1fr)}
+ .explorer-mobile-tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;background:var(--surface-2);border:1px solid var(--line);border-radius:9px;padding:3px;margin-top:12px}
+ .explorer-mobile-tabs button{border:0;background:transparent;color:var(--muted);border-radius:7px;padding:8px;font-size:11px;font-weight:700}
+ .explorer-mobile-tabs button.active{background:var(--surface);color:var(--teal);box-shadow:0 1px 3px rgba(20,43,67,.1)}
+ .explorer-result-panel{display:none}
+ .explorer-result-panel.selected{display:block}
+ .explorer-result-panel .panel{min-height:0}
+ .explorer-records-panel .panel{min-height:0}
+ .explorer-table-wrap{max-height:calc(100vh - 300px);min-height:230px}
+ .explorer-toolbar{align-items:flex-start}
+ .explorer-result-meta{gap:7px}
+ .explorer-toolbar .primary-btn{white-space:nowrap}
+}
+@media(max-width:420px){
+ .explorer-filter-grid{grid-template-columns:1fr 1fr}
+ .explorer-toolbar{gap:6px;flex-direction:column;align-items:stretch}
+ .explorer-toolbar .primary-btn{width:100%}
+}
