@@ -351,8 +351,28 @@ test("module controls change the calculations and data views", async ({ page }) 
   await page.getByLabel("Annual coupon rate (%)").fill("10");
   await expect(bondPriceMetric).not.toHaveText(bondPriceBefore || "");
   await page.getByLabel("Payments per year").selectOption("4");
-  await expect.poll(() => page.locator(".bond-cashflow-chart .recharts-bar-rectangle").count()).toBeGreaterThanOrEqual(20);
-  await expect(page.locator(".bond-price-chart .recharts-line")).toBeVisible();
+  await expect(page.locator(".bond-cashflow-table tbody tr")).toHaveCount(20);
+  await expect.poll(() => page.locator(".bond-cashflow-chart .recharts-bar-rectangle").count()).toBeGreaterThanOrEqual(10);
+  await expect(page.locator(".bond-price-chart .recharts-line")).toHaveCount(2);
+  await expect(page.locator(".bond-price-chart .recharts-reference-line")).toBeVisible();
+
+  // Bond schedules must land exactly on the contractual maturity date.
+  await page.getByLabel("Years to maturity").fill("2.3");
+  await expect(page.getByText(/Maturity must be an exact multiple/i)).toBeVisible();
+  await expect(page.locator(".bond-price-chart .recharts-surface")).toHaveCount(0);
+  await page.getByLabel("Years to maturity").fill("2.25");
+  await expect(page.locator(".bond-cashflow-table tbody tr")).toHaveCount(9);
+
+  // The yield graph follows the selected yield and includes the approximation comparison.
+  await page.getByLabel("Yield to maturity (%)").fill("80");
+  await expect(page.locator(".bond-price-chart .recharts-line")).toHaveCount(2);
+  const currentPrice = await bondPriceMetric.textContent();
+  await page.getByLabel("Yield change (basis points)").fill("250");
+  const shockedMetric = page.locator(".metric-card").filter({ hasText: "Estimated shocked price" }).locator(".metric-value");
+  const shockedBefore = await shockedMetric.textContent();
+  await page.getByLabel("Yield change (basis points)").fill("-250");
+  await expect(shockedMetric).not.toHaveText(shockedBefore || "");
+  expect(currentPrice).not.toBe("");
 
   // Options & Greeks: option type changes the theoretical value and sensitivities.
   await page.getByRole("button", { name: "Options & Greeks", exact: true }).click();
