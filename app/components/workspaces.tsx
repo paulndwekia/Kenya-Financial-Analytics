@@ -323,9 +323,7 @@ function MarketIntelligence({data}:{data:MarketPayload}){
   const ranked=[...momentumRows].filter(row=>row.momentum!==null).sort((a,b)=>b.momentum!-a.momentum!);
   const mostVolatile=[...momentumRows].filter(row=>row.volatility!==null).sort((a,b)=>b.volatility!-a.volatility!)[0];
   const latestDates=pairSeries.map(row=>row.latest?.date).filter((date):date is string=>Boolean(date));
-  const commonStart=pairSeries.map(row=>row.observations.at(-Math.min(horizon+1,row.observations.length))?.date).filter((date):date is string=>Boolean(date));
   const alignedCounts=correlationRows.map(row=>row.map(cell=>cell.count));
-  const commonDates=Math.min(...alignedCounts.flat().filter(count=>count>0));
   const chartRows=momentumRows.filter(row=>row.momentum!==null).map(row=>({pair:row.pair,move:row.movePercent!,volatility:row.volatilityPercent??0,reading:row.reading}));
   const chartCorrelation=momentumRows.filter(row=>row.movePercent!==null&&row.volatilityPercent!==null).map(row=>({pair:row.pair,x:row.volatilityPercent!,y:row.movePercent!}));
   const averageAbsCorrelation=(()=>{
