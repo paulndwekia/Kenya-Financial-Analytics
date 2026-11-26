@@ -418,9 +418,10 @@ function Backtesting({data}:{data:MarketPayload}){
   for(let i=1;i<values.length;i++){
     const ready=i>=l;
     const signal=ready&&mean(values.slice(i-s,i))>mean(values.slice(i-l,i))?1:0;
-    if(signal!==position){if(signal===1)trades++;position=signal;}
+    const changed=signal!==position;
+    if(changed){if(signal===1)trades++;position=signal;}
     const marketReturn=values[i-1]===0?0:values[i]/values[i-1]-1;
-    const strategyReturn=position?marketReturn-cost:0;
+    const strategyReturn=position?marketReturn-(changed?cost:0):0;
     equity*=1+strategyReturn;benchmark*=1+marketReturn;peak=Math.max(peak,equity);worst=Math.min(worst,equity/peak-1);
     points.push({date:rows[i].date,strategy:equity,benchmark});
   }
