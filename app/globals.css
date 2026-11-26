@@ -322,3 +322,23 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
  .yield-curve-workspace .control-row{grid-template-columns:minmax(0,1fr)}
  .yield-curve-slope-table .data-table{font-size:9px}
 }
+
+/* Treasury Bills: calculator conventions and actual auction-price comparison */
+.treasury-calculator-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;align-items:end}
+.treasury-calculator-controls .field{min-width:0}
+.treasury-calculator-controls .search{width:100%;min-width:0}
+.treasury-result-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+.treasury-result-grid .metric-card{min-width:0;padding:13px}
+.treasury-result-grid .metric-value{font-size:clamp(16px,1.8vw,21px);overflow-wrap:anywhere}
+.treasury-result-grid .metric-foot{font-size:9px;line-height:1.45}
+@media(max-width:1050px){.treasury-calculator-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.treasury-result-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){
+ .treasury-calculator-controls{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .treasury-result-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+ .treasury-result-grid .metric-card{padding:10px}
+ .treasury-result-grid .metric-value{font-size:17px}
+}
+@media(max-width:380px){
+ .treasury-calculator-controls{grid-template-columns:minmax(0,1fr)}
+ .treasury-result-grid .metric-value{font-size:15px}
+}
