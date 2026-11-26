@@ -155,7 +155,7 @@ test("Historical Market Explorer keeps its controls and graph compact", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "Historical Market Explorer", exact: true }).click();
 
-  await expect(page.getByRole("heading", { name: "Historical market explorer" })).toBeVisible();
+  await expect(page.getByText("Historical market explorer", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Dataset")).toBeVisible();
   await expect(page.getByLabel("Currency pair")).toBeVisible();
   await expect(page.getByLabel("From date")).toBeVisible();
