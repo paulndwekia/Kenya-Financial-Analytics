@@ -65,7 +65,7 @@ def fetch_fx():
             if len(cells) < 3:
                 continue
             date = parse_date(cells[0])
-            currency = re.sub(r"\\s+", " ", cells[1].upper()).strip()
+            currency = re.sub(r"\s+", " ", cells[1].upper()).strip()
             instrument = currency_map.get(currency)
             rate = parse_rate(cells[2])
             if date and instrument and rate and 80 < rate < 250:
@@ -79,20 +79,18 @@ def fetch_fx():
                 }
 
     if observations:
-        # Keep the newest CBK rows returned by the published page.
         return sorted(observations.values(), key=lambda row: (row["date"], row["instrument"]))
 
-    # The current page also publishes a concise daily-rate summary.
-    # Only use it when CBK supplies its explicit "Posted On" date.
-    text = soup.get_text("\\n", strip=True)
-    posted = re.search(r"Posted\\s+On\\s*:?\\s*(\\d{1,2}-\\d{1,2}-\\d{4})", text, re.I)
+    # Use the daily summary only when CBK supplies its explicit posted date.
+    text = soup.get_text("\n", strip=True)
+    posted = re.search(r"Posted\s+On\s*:?\s*(\d{1,2}-\d{1,2}-\d{4})", text, re.I)
     posted_date = parse_date(posted.group(1)) if posted else None
     if not posted_date:
         raise RuntimeError("CBK New Rates page did not expose dated FX observations or a posted date.")
     patterns = {
-        "USD/KES": r"US\\s+DOLLAR\\s*[|:]\\s*([0-9]+(?:\\.[0-9]+)?)",
-        "GBP/KES": r"STG\\s+POUND\\s*[|:]\\s*([0-9]+(?:\\.[0-9]+)?)",
-        "EUR/KES": r"EURO\\s*[|:]\\s*([0-9]+(?:\\.[0-9]+)?)",
+        "USD/KES": r"US\s+DOLLAR\s*[|:]\s*([0-9]+(?:\.[0-9]+)?)",
+        "GBP/KES": r"STG\s+POUND\s*[|:]\s*([0-9]+(?:\.[0-9]+)?)",
+        "EUR/KES": r"EURO\s*[|:]\s*([0-9]+(?:\.[0-9]+)?)",
     }
     fallback = []
     for instrument, pattern in patterns.items():
