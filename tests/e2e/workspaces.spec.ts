@@ -135,7 +135,7 @@ test("Kenyan Market isolates one FX pair and updates its chosen observation wind
 
   await expect(page.locator(".market-detail-metrics .metric-card")).toHaveCount(5);
   await expect(page.locator(".market-detail-chart .recharts-surface")).toBeVisible();
-  await expect(page.getByText("KES per one unit of foreign currency", { exact: false })).toBeVisible();
+  await expect(page.getByText("Kenyan shillings per one unit of foreign currency", { exact: false })).toBeVisible();
 
   await page.getByLabel("Currency pair").selectOption("GBP/KES");
   await expect(page.locator(".market-recent-table tbody tr").first()).toContainText("GBP/KES");
