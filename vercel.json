@@ -5,6 +5,9 @@
     },
     "api/refresh.py": {
       "maxDuration": 30
+    },
+    "api/report.py": {
+      "maxDuration": 10
     }
   },
   "headers": [
