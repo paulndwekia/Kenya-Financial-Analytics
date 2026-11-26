@@ -759,7 +759,7 @@ function FinancialReports({data}:{data:MarketPayload}){
   };
   const fx=PAIRS.map(pair=>{const {rows,values,rets}=seriesFor(data.fx,pair);return {pair,rows,latest:values.at(-1),change:values.length>1?values.at(-1)!/values[0]-1:0,vol:stdev(rets)*Math.sqrt(252)};});
   const dates=data.bills.map(x=>x.date).sort(),latestDate=dates.at(-1)||"";
-  const latestBills=TENORS.map(tenor=>data.bills.filter(x=>x.tenor_days===tenor).sort((a,b)=>b.date.localeCompare(a.date))[0]).filter(Boolean);
+  const latestBills=data.bills.filter(row=>row.date===latestDate).sort((a,b)=>a.tenor_days-b.tenor_days);
   const summaryCsvRows=[
     ...fx.map(x=>["FX",x.pair,x.rows.at(-1)?.date||"",x.latest??"",x.change,x.vol,x.rows.length,x.rows.at(-1)?.source||"",x.rows.at(-1)?.source_url||""]),
     ...latestBills.map(row=>["Treasury bill",row.tenor_days+" days",row.date,row.rate,"","",data.bills.filter(x=>x.tenor_days===row.tenor_days).length,row.source,row.source_url||""])
