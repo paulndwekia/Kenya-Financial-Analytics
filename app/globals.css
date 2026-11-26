@@ -136,3 +136,38 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
  .explorer-toolbar{gap:6px;flex-direction:column;align-items:stretch}
  .explorer-toolbar .primary-btn{width:100%}
 }
+
+/* Treasury Bills: dedicated selector, balanced KPIs and contained auction history. */
+.treasury-filter-row{display:grid;grid-template-columns:minmax(180px,260px);gap:10px;margin:2px 0 12px}
+.treasury-filter-row .field .search{width:100%;min-width:0}
+.treasury-kpi-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:10px 0 14px}
+.treasury-kpi-grid .metric-card{min-width:0;padding:14px 15px}
+.treasury-kpi-grid .metric-value{font-size:clamp(17px,2vw,23px);letter-spacing:-.45px;overflow-wrap:anywhere}
+.treasury-history-table{max-height:300px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.treasury-history-table>div{overflow:visible!important}
+.treasury-history-table .data-table th{position:sticky;top:0;z-index:1;background:#f1f5f8}
+.dark .treasury-history-table .data-table th{background:#26394d}
+.bond-price-chart,.bond-cashflow-chart{max-width:100%;min-width:0}
+@media(max-width:760px){
+ .treasury-filter-row{grid-template-columns:minmax(0,1fr);max-width:100%}
+ .treasury-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ .treasury-kpi-grid .metric-card:first-child{grid-column:1/-1}
+ .treasury-kpi-grid .metric-card{padding:12px}
+ .treasury-kpi-grid .metric-value{font-size:clamp(18px,5vw,23px);margin:8px 0 4px}
+ .treasury-kpi-grid .metric-label{font-size:10px}
+ .treasury-kpi-grid .metric-foot{font-size:9px}
+ .treasury-chart{height:225px!important}
+ .treasury-history-table{max-height:230px}
+ .treasury-calculator-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .treasury-calculator-fields .field:first-child{grid-column:1/-1}
+ .bond-price-chart{height:215px!important}
+ .bond-cashflow-chart{height:205px!important}
+}
+@media(max-width:380px){
+ .treasury-kpi-grid{grid-template-columns:minmax(0,1fr)}
+ .treasury-kpi-grid .metric-card:first-child{grid-column:auto}
+ .treasury-calculator-fields{grid-template-columns:minmax(0,1fr)}
+ .treasury-calculator-fields .field:first-child{grid-column:auto}
+ .bond-price-chart{height:200px!important}
+ .bond-cashflow-chart{height:190px!important}
+}
