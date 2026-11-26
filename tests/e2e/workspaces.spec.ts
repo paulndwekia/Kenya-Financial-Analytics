@@ -128,6 +128,33 @@ test("dashboard provides a distinct market overview and truthful import status",
   expect(quoteCardsFit).toBe(true);
 });
 
+test("Kenyan Market isolates one FX pair and updates its chosen observation window", async ({ page }) => {
+  await mockMarketApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Kenyan Market", exact: true }).click();
+
+  await expect(page.locator(".market-detail-metrics .metric-card")).toHaveCount(5);
+  await expect(page.locator(".market-detail-chart .recharts-surface")).toBeVisible();
+  await expect(page.getByText("KES per one unit of foreign currency", { exact: false })).toBeVisible();
+
+  await page.getByLabel("Currency pair").selectOption("GBP/KES");
+  await expect(page.locator(".market-recent-table tbody tr").first()).toContainText("GBP/KES");
+  await page.getByRole("button", { name: "30D", exact: true }).click();
+  const thirtyDayMeta = await page.locator(".market-period-meta").textContent();
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await expect(page.locator(".market-period-meta")).toContainText("100 observations");
+  expect(thirtyDayMeta).toContain("observations");
+  expect(Number(thirtyDayMeta?.match(/(\d+) observations/)?.[1] || 0)).toBeLessThan(100);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const metricsFit = await page.locator(".market-detail-metrics").evaluate(element => {
+    const parent = element.getBoundingClientRect();
+    const cards = [...element.querySelectorAll(".metric-card")].map(card => card.getBoundingClientRect());
+    return cards.every(card => card.left >= parent.left - 1 && card.right <= parent.right + 1);
+  });
+  expect(metricsFit).toBe(true);
+});
+
 test("all 16 workspaces open from navigation and show their own analytical graph", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", error => pageErrors.push(error.message));
