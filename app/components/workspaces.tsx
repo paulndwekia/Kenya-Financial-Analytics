@@ -173,7 +173,7 @@ function YieldCurve({data}:{data:MarketPayload}){
       {curve.length>=2?<ChartFrame height={300}><ResponsiveContainer><LineChart data={curve}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="tenor" tick={{fontSize:11,fill:"#8291a0"}} label={{value:"Tenor (days)",position:"insideBottom",offset:-3,fontSize:10}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Line dataKey="yield" name="Auction yield" stroke="#356bb3" strokeWidth={2.5} dot={{r:5,fill:"#356bb3"}}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="The latest auction does not contain two or more tenors on the same date. The interface will not interpolate missing auction yields."/>}
     </Panel>
     <Panel title="Curve history" note="Latest available observation for each tenor; individual auction dates are shown">
-      <Table headers={["Tenor","Auction date","Accepted yield","Issue number","Source"]} rows={current.sort((a,b)=>a.tenor_days-b.tenor_days).map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/>
+      <Table headers={["Tenor","Auction date","Market-weighted yield","Issue number","Source"]} rows={current.sort((a,b)=>a.tenor_days-b.tenor_days).map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/>
     </Panel>
   </div>;
 }
@@ -189,7 +189,7 @@ function TreasuryBills({data}:{data:MarketPayload}){
   const chart=rows.map(row=>({date:row.date,yield:row.rate*100}));
   return <div className="workspace-stack">
     <Panel title="Auction history by tenor" note="Choose one Treasury bill maturity; this is auction history, not an offer to invest">
-      <div className="control-row"><label className="field"><span>Tenor</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}>{TENORS.map(t=><option key={t} value={t}>{t}-day Treasury bill</option>)}</select></label><Metric label="Latest accepted yield" value={rates.length?pct(rates.at(-1)!,4):"—"} note={rows.at(-1)?.date||"No auction record"}/><Metric label="Historical average" value={rates.length?pct(mean(rates),4):"—"} note={rows.length+" observations"}/><Metric label="Observed range" value={rates.length?((Math.max(...rates)-Math.min(...rates))*100).toFixed(3)+" pp":"—"} note="High less low in stored history"/></div>
+      <div className="control-row"><label className="field"><span>Tenor</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}>{TENORS.map(t=><option key={t} value={t}>{t}-day Treasury bill</option>)}</select></label><Metric label="Latest market-weighted yield" value={rates.length?pct(rates.at(-1)!,4):"—"} note={rows.at(-1)?.date||"No auction record"}/><Metric label="Historical average" value={rates.length?pct(mean(rates),4):"—"} note={rows.length+" observations"}/><Metric label="Observed range" value={rates.length?((Math.max(...rates)-Math.min(...rates))*100).toFixed(3)+" pp":"—"} note="High less low in stored history"/></div>
       {chart.length>=2?<ChartFrame height={300}><ResponsiveContainer><LineChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Line dataKey="yield" name="Accepted rate" stroke="#d5a43b" strokeWidth={2.2} dot={false}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="More than one auction observation is needed to draw a history for this tenor."/>}
       <Table headers={["Auction date","Accepted yield","Issue number","Source"]} rows={[...rows].reverse().map(row=>[row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/>
     </Panel>
@@ -351,10 +351,10 @@ function Portfolio({data}:{data:MarketPayload}){
   const totalReturn=cumulative.length?cumulative.at(-1)!-1:0;
   const annualVol=stdev(daily)*Math.sqrt(252);
   const initial=Number(amount),ending=initial*(1+totalReturn);
-  const valid=initial>0&&Math.abs(weightSum-100)<.0001;
+  const valid=initial>0&&perPair.every(row=>row.weight>=0)&&Math.abs(weightSum-100)<.0001;
   return <div className="workspace-stack">
     <Panel title="Currency exposure basket" note="Illustrative weighted basket based on aligned CBK daily FX returns; it is not a brokerage portfolio">
-      <div className="metric-grid"><Field label="Starting reference value (KES)" value={amount} onChange={setAmount} min="1"/>{perPair.map(row=><Field key={row.pair} label={row.pair+" weight (%)"} value={weights[row.pair as keyof typeof weights]} onChange={v=>setWeights(prev=>({...prev,[row.pair]:v}))} min="0"/>)}</div>
+      <div className="metric-grid"><Field label="Starting reference value (KES)" value={amount} onChange={setAmount} min="1"/>{perPair.map(row=><Field key={row.pair} label={row.pair+" weight (%)"} value={weights[row.pair as keyof typeof weights]} onChange={v=>setWeights(prev=>({...prev,[row.pair]:v}))} min="0" max="100"/>)}</div>
       <div className="panel-note">Total allocation: <strong>{weightSum.toFixed(2)}%</strong> {valid?"· Fully allocated":"· Set weights to exactly 100% before interpreting portfolio results."}</div>
       {valid?<div className="metric-grid"><Metric label="Starting value" value={money(initial)}/><Metric label="Historical reference value" value={money(ending)} note={pct(totalReturn)+" cumulative model change"}/><Metric label="Annualised volatility" value={pct(annualVol)}/><Metric label="Historical max drawdown" value={pct(maxDrawdown(cumulative))}/></div>:<NoData message="A positive starting value and weights totalling exactly 100% are required."/>}
       {valid&&<Table headers={["Currency pair","Weight","Contribution to model change"]} rows={perPair.map((row,i)=>{const ret=seriesFor(data.fx,row.pair).values;const assetReturn=ret.length>1?ret.at(-1)!/ret[0]-1:0;return [row.pair,pct(row.weight/100),pct(row.weight/100*assetReturn)]})}/>}
@@ -378,7 +378,7 @@ function ResearchIntelligence({data}:{data:MarketPayload}){
   return <div className="workspace-stack">
     <Panel title="Moving-average research" note="Historical trend comparison; this module does not issue a trade instruction">
       <div className="control-row"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(p=><option key={p}>{p}</option>)}</select></label><Field label="Short window" value={short} onChange={setShort} min="2" max="1000" step="1"/><Field label="Long window" value={long} onChange={setLong} min="3" max="1000" step="1"/></div>
-      <div className="metric-grid"><Metric label="Latest observed rate" value={last?.rate.toFixed(4)||"—"}/><Metric label={s+"-observation average"} value={last?.short?.toFixed(4)||"—"}/><Metric label={l+"-observation average"} value={last?.long?.toFixed(4)||"—"}/><Metric label="Relationship" value={signal}/></div>
+      <div className="metric-grid"><Metric label="Latest observed rate" value={last?.rate.toFixed(4)||"—"}/><Metric label={s+"-observation average"} value={valid?last?.short?.toFixed(4)||"—":"—"}/><Metric label={l+"-observation average"} value={valid?last?.long?.toFixed(4)||"—":"—"}/><Metric label="Relationship" value={signal}/></div>
       {valid&&chart.length>=l?<ChartFrame height={340}><ResponsiveContainer><ComposedChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis domain={["auto","auto"]} tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Line dataKey="rate" name="Observed rate" stroke="#9aa6b2" strokeWidth={1.5} dot={false}/><Line dataKey="short" name={"SMA "+s} stroke="#087f8c" strokeWidth={2} dot={false}/><Line dataKey="long" name={"SMA "+l} stroke="#d5a43b" strokeWidth={2} dot={false}/></ComposedChart></ResponsiveContainer></ChartFrame>:<NoData message="Choose a short window below the long window. The selected pair also needs at least as many observations as the long window."/>}
     </Panel>
     <Panel title="Research notes" note="How to read this view">
@@ -393,14 +393,14 @@ function FinancialReports({data}:{data:MarketPayload}){
   const dates=data.bills.map(x=>x.date).sort(),latestDate=dates.at(-1)||"";
   const latestBills=TENORS.map(tenor=>data.bills.filter(x=>x.tenor_days===tenor).sort((a,b)=>b.date.localeCompare(a.date))[0]).filter(Boolean);
   const exportRows=[
-    ...fx.map(x=>["FX",x.pair,x.rows.at(-1)?.date||"",x.latest??"",pct(x.change),pct(x.vol),x.rows.length]),
-    ...latestBills.map(x=>["Treasury bill",x.tenor_days+" days",x.date,pct(x.rate,4),"","",""])
+    ...fx.map(x=>{const row=x.rows.at(-1);return ["FX",x.pair,row?.date||"",x.latest??"",pct(x.change),pct(x.vol),x.rows.length,row?.source||"",row?.source_url||""];}),
+    ...latestBills.map(x=>["Treasury bill",x.tenor_days+" days",x.date,pct(x.rate,4),"","",data.bills.filter(row=>row.tenor_days===x.tenor_days).length,x.source,x.source_url||""])
   ];
   return <div className="workspace-stack">
     <Panel title="Market research report" note={"Generated "+generated+" · Source: Central Bank of Kenya"}>
       <div className="metric-grid"><Metric label="FX observations" value={data.fx.length.toLocaleString("en-KE")}/><Metric label="Auction observations" value={data.bills.length.toLocaleString("en-KE")}/><Metric label="FX coverage" value={(data.fx.map(x=>x.date).sort()[0]||"—")+" to "+(data.health.latest_fx_observation||"—")}/><Metric label="Auction coverage" value={(dates[0]||"—")+" to "+(data.health.latest_bill_observation||"—")}/></div>
       <div className="panel-head"><div><div className="panel-title">Currency market summary</div><div className="panel-note">Cumulative change over each series' available period</div></div><button className="primary-btn" onClick={()=>csvDownload("kenya-financial-analytics-report.csv",["Section","Instrument","Latest date","Latest value","Cumulative change","Annualised volatility","Observations"],exportRows)}>Download report CSV</button></div>
-      <Table headers={["Pair","Latest date","Latest rate","Cumulative change","Annualised volatility","Observations"]} rows={fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest?.toFixed(4)||"—",pct(x.change),pct(x.vol),x.rows.length])}/>
+      <Table headers={["Pair","Latest date","Latest rate","Cumulative change","Annualised volatility","Observations","Source"]} rows={fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest?.toFixed(4)||"—",pct(x.change),pct(x.vol),x.rows.length,x.rows.at(-1)?.source||"—"])}/>
     </Panel>
     <Panel title="Latest Treasury bill auction snapshot" note={latestDate||"No auction results in database"}>
       <Table headers={["Tenor","Auction date","Accepted yield","Issue number","Source"]} rows={latestBills.map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/>
@@ -443,7 +443,7 @@ function Backtesting({data}:{data:MarketPayload}){
 function StressTesting(){
   const [capital,setCapital]=useState("1000000"),[fxShock,setFxShock]=useState("-10"),[face,setFace]=useState("1000000"),[duration,setDuration]=useState("4"),[convexity,setConvexity]=useState("22"),[bps,setBps]=useState("100");
   const value=Number(capital),shock=Number(fxShock)/100,faceValue=Number(face),mod=Number(duration),conv=Number(convexity),dy=Number(bps)/10000;
-  const valid=value>0&&shock>-1&&Number.isFinite(shock)&&faceValue>0&&mod>=0&&mod<=100&&conv>=0&&conv<=10000&&Math.abs(Number(bps))<=5000;
+  const valid=value>0&&shock>-1&&shock<=5&&Number.isFinite(shock)&&faceValue>0&&mod>=0&&mod<=100&&conv>=0&&conv<=10000&&Math.abs(Number(bps))<=5000&&(-mod*dy+.5*conv*dy*dy)>-1;
   const stressedFx=value*(1+shock);
   const bondMove=-mod*dy+.5*conv*dy*dy,bondPrice=faceValue*(1+bondMove);
   const scenarios=[-30,-20,-15,-10,-5,0,5,10,15,20].map(x=>({shock:x,value:value*(1+x/100),pnl:value*x/100}));
