@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from psycopg.rows import dict_row
 
-CBK_FOREX_URL = "https://www.centralbank.go.ke/forex/"
+CBK_FOREX_URL = "https://www.centralbank.go.ke/rates/forex-exchange-rates/"
 CBK_TBILLS_URL = "https://www.centralbank.go.ke/bills-bonds/treasury-bills/"
 SOURCE = "Central Bank of Kenya"
 HEADERS = {
