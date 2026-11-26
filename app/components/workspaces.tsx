@@ -161,19 +161,57 @@ function MarketIntelligence({data}:{data:MarketPayload}){
 function YieldCurve({data}:{data:MarketPayload}){
   const dates=[...new Set(data.bills.map(row=>row.date))].sort();
   const latestDate=dates.at(-1)||"";
-  const current=TENORS.map(tenor=>data.bills.filter(row=>row.tenor_days===tenor).sort((a,b)=>b.date.localeCompare(a.date))[0]).filter(Boolean) as BillRow[];
-  const latestCurve=current.filter(row=>row.date===latestDate).sort((a,b)=>a.tenor_days-b.tenor_days);
+  const latestCurve=data.bills.filter(row=>row.date===latestDate).sort((a,b)=>a.tenor_days-b.tenor_days);
   const curve=latestCurve.map(row=>({tenor:String(row.tenor_days),yield:row.rate*100}));
-  const short=latestCurve.find(x=>x.tenor_days===91),long=latestCurve.find(x=>x.tenor_days===364);
+  const short=latestCurve.find(x=>x.tenor_days===91),medium=latestCurve.find(x=>x.tenor_days===182),long=latestCurve.find(x=>x.tenor_days===364);
   const spread=short&&long?long.rate-short.rate:null;
-  const shape=spread===null?"Not enough matched tenors":spread>.0005?"Upward sloping":spread<-.0005?"Inverted":"Relatively flat";
+  const ordered=[...latestCurve].sort((a,b)=>a.tenor_days-b.tenor_days);
+  const allUp=ordered.length>=2&&ordered.every((row,i)=>i===0||row.rate>=ordered[i-1].rate);
+  const allDown=ordered.length>=2&&ordered.every((row,i)=>i===0||row.rate<=ordered[i-1].rate);
+  const shape=ordered.length<2?"Not enough matched tenors":allUp?"Upward / normal":allDown?"Downward / inverted":"Mixed / humped";
+  const interpolate=(target:number):number|null=>{
+    if(target<91||target>364||ordered.length<2)return null;
+    for(let i=0;i<ordered.length-1;i++){
+      const left=ordered[i],right=ordered[i+1];
+      if(target>=left.tenor_days&&target<=right.tenor_days){
+        const proportion=(target-left.tenor_days)/(right.tenor_days-left.tenor_days);
+        return left.rate+proportion*(right.rate-left.rate);
+      }
+    }
+    return target===ordered.at(-1)?.tenor_days?ordered.at(-1)!.rate:null;
+  };
+  const [startDays,setStartDays]=useState("91"),[endDays,setEndDays]=useState("364");
+  const start=Number(startDays),end=Number(endDays),r1=interpolate(start),r2=interpolate(end);
+  const t1=start/365,t2=end/365;
+  const forwardRate=r1!==null&&r2!==null&&end>start
+    ? Math.pow((Math.pow(1+r2,t2)/Math.pow(1+r1,t1)),1/(t2-t1))-1
+    : null;
+  const interpolationDays=[120,150,210,270,300];
   return <div className="workspace-stack">
     <Panel title="Latest recorded auction curve" note={latestDate||"No matched auction date"}>
-      <div className="metric-grid">{TENORS.map(tenor=>{const row=latestCurve.find(x=>x.tenor_days===tenor);return <Metric key={tenor} label={tenor+"-day yield"} value={row?pct(row.rate,4):"—"} note={row?.issue_number||"No observation for this auction"}/>})}<Metric label="364s–91s spread" value={spread===null?"—":(spread*100).toFixed(3)+" pp"} note={shape}/></div>
-      {curve.length>=2?<ChartFrame height={300}><ResponsiveContainer><LineChart data={curve}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="tenor" tick={{fontSize:11,fill:"#8291a0"}} label={{value:"Tenor (days)",position:"insideBottom",offset:-3,fontSize:10}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Line dataKey="yield" name="Auction yield" stroke="#356bb3" strokeWidth={2.5} dot={{r:5,fill:"#356bb3"}}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="The latest auction does not contain two or more tenors on the same date. The interface will not interpolate missing auction yields."/>}
+      <div className="metric-grid">
+        {TENORS.map(tenor=>{const row=latestCurve.find(x=>x.tenor_days===tenor);return <Metric key={tenor} label={tenor+"-day spot yield"} value={row?pct(row.rate,4):"—"} note={row?.issue_number||"No observation for this auction"}/>})}
+        <Metric label="364s–91s spread" value={spread===null?"—":pp(spread,3)} note={shape}/>
+      </div>
+      {curve.length>=2?<ChartFrame height={300}><ResponsiveContainer><LineChart data={curve}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="tenor" tick={{fontSize:11,fill:"#8291a0"}} label={{value:"Tenor (days)",position:"insideBottom",offset:-3,fontSize:10}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Line dataKey="yield" name="Auction yield" stroke="#356bb3" strokeWidth={2.5} dot={{r:5,fill:"#356bb3"}}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="The latest auction does not contain two or more tenors on the same date. No missing observations have been estimated."/>}
+      <div className="panel-note">The curve uses only yields published for the same auction date. It does not combine the latest individual rates from different auctions.</div>
     </Panel>
-    <Panel title="Curve history" note="Latest available observation for each tenor; individual auction dates are shown">
-      <Table headers={["Tenor","Auction date","Market-weighted yield","Issue number","Source"]} rows={current.sort((a,b)=>a.tenor_days-b.tenor_days).map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/>
+    <Panel title="Interpolated spot rates" note="Linear interpolation between the latest matched 91-, 182- and 364-day observations">
+      <Table headers={["Model maturity","Interpolated spot yield","Method"]} rows={interpolationDays.map(day=>{
+        const value=interpolate(day);
+        return [day+" days",value===null?"Not available":pct(value,4),"Linear between adjacent observed tenors"];
+      })}/>
+      <p className="panel-note">These intermediate maturities are model estimates, not separate CBK auction observations. Values are not extrapolated outside the published 91–364 day range.</p>
+    </Panel>
+    <Panel title="Implied forward rate" note="Annualised effective forward rate derived from interpolated spot rates">
+      <div className="control-row">
+        <label className="field"><span>Forward period starts (days)</span><select className="search" value={startDays} onChange={e=>setStartDays(e.target.value)}>{[91,120,150,182,210,270].map(x=><option key={x} value={x}>{x} days</option>)}</select></label>
+        <label className="field"><span>Forward period ends (days)</span><select className="search" value={endDays} onChange={e=>setEndDays(e.target.value)}>{[182,210,270,300,364].map(x=><option key={x} value={x}>{x} days</option>)}</select></label>
+      </div>
+      <div className="metric-grid"><Metric label="Implied forward rate" value={forwardRate===null?"—":pct(forwardRate,4)} note={forwardRate===null?"Choose an increasing maturity pair with available spot rates":"From day "+start+" to day "+end}/><Metric label="Short spot rate" value={r1===null?"—":pct(r1,4)}/><Metric label="Long spot rate" value={r2===null?"—":pct(r2,4)}/></div>
+    </Panel>
+    <Panel title="Curve observations" note="Source records from the latest auction">
+      <Table headers={["Tenor","Auction date","Market-weighted yield","Price per KES 100","Issue number","Source"]} rows={latestCurve.map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.price===null||row.price===undefined?"—":Number(row.price).toFixed(4),row.issue_number||"—",row.source])}/>
     </Panel>
   </div>;
 }
