@@ -623,30 +623,72 @@ function FinancialReports({data}:{data:MarketPayload}){
 }
 
 function Backtesting({data}:{data:MarketPayload}){
-  const [pair,setPair]=useState("USD/KES"),[short,setShort]=useState("20"),[long,setLong]=useState("60"),[fee,setFee]=useState("0");
-  const {rows,values}=seriesFor(data.fx,pair),s=Number(short),l=Number(long),cost=Number(fee)/10000;
-  const valid=Number.isInteger(s)&&Number.isInteger(l)&&s>=2&&l>s&&Number.isFinite(cost)&&cost>=0&&values.length>l+1;
+  const [mode,setMode]=useState("FX moving average");
+  const [pair,setPair]=useState("USD/KES"),[tenor,setTenor]=useState("91");
+  const [short,setShort]=useState("20"),[long,setLong]=useState("60"),[fee,setFee]=useState("0"),[duration,setDuration]=useState("5");
+  const fx=seriesFor(data.fx,pair);
+  const billRows=data.bills.filter(row=>row.tenor_days===Number(tenor)).sort((a,b)=>a.date.localeCompare(b.date));
+  const values=mode==="FX moving average"?fx.values:billRows.map(row=>row.rate);
+  const dates=mode==="FX moving average"?fx.rows.map(row=>row.date):billRows.map(row=>row.date);
+  const s=Number(short),l=Number(long),cost=Number(fee)/10000,rateDuration=Number(duration);
+  const isFx=mode==="FX moving average";
+  const valid=isFx
+    ? Number.isInteger(s)&&Number.isInteger(l)&&s>=2&&l>s&&Number.isFinite(cost)&&cost>=0&&cost<=.1&&values.length>l+1
+    : Number.isInteger(s)&&s>=2&&Number.isFinite(rateDuration)&&rateDuration>0&&rateDuration<=100&&Number.isFinite(cost)&&cost>=0&&cost<=.1&&values.length>s+1;
   const points=[];
   let equity=1,benchmark=1,position=0,trades=0,peak=1,worst=0;
   for(let i=1;valid&&i<values.length;i++){
-    const ready=i>=l;
-    const signal=ready&&mean(values.slice(i-s,i))>mean(values.slice(i-l,i))?1:0;
+    let signal=0;
+    if(isFx){
+      if(i>=l&&mean(values.slice(i-s,i))>mean(values.slice(i-l,i)))signal=1;
+    }else if(i>s&&values[i-1]>mean(values.slice(i-s-1,i-1))){
+      signal=1;
+    }
     const changed=signal!==position;
     if(changed){if(signal===1)trades++;position=signal;}
-    const marketReturn=values[i-1]===0?0:values[i]/values[i-1]-1;
-    const strategyReturn=position?marketReturn-(changed?cost:0):0;
-    equity*=1+strategyReturn;benchmark*=1+marketReturn;peak=Math.max(peak,equity);worst=Math.min(worst,equity/peak-1);
-    points.push({date:rows[i].date,strategy:equity,benchmark});
+    const baseReturn=isFx
+      ? (values[i-1]===0?0:values[i]/values[i-1]-1)
+      : -rateDuration*(values[i]-values[i-1]);
+    const strategyReturn=position?baseReturn-(changed?cost:0):0;
+    equity*=1+strategyReturn;benchmark*=1+baseReturn;peak=Math.max(peak,equity);worst=Math.min(worst,equity/peak-1);
+    points.push({date:dates[i],strategy:equity,benchmark});
   }
   const strategyReturn=equity-1,benchmarkReturn=benchmark-1;
   return <div className="workspace-stack">
-    <Panel title="Moving-average strategy test" note="Signals are formed from prior observations and applied to the next observed return">
-      <div className="metric-grid"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label><Field label="Short average (observations)" value={short} onChange={setShort} min="2" max="1000" step="1"/><Field label="Long average (observations)" value={long} onChange={setLong} min="3" max="1000" step="1"/><Field label="Cost per position change (basis points)" value={fee} onChange={setFee} min="0" max="1000"/></div>
-      {valid?<div className="metric-grid"><Metric label="Strategy cumulative return" value={pct(strategyReturn)} note="Long / cash rule, before tax"/><Metric label="Buy-and-hold return" value={pct(benchmarkReturn)}/><Metric label="Strategy max drawdown" value={pct(worst)}/><Metric label="Entries" value={trades.toString()} note="Position changes from cash to long"/></div>:<NoData message="The short window must be below the long window, and the selected FX pair must contain more observations than the long window."/>}
-      {points.length?<ChartFrame height={320}><ResponsiveContainer><LineChart data={points}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Line dataKey="strategy" name="Strategy index" stroke="#087f8c" strokeWidth={2} dot={false}/><Line dataKey="benchmark" name="Buy-and-hold index" stroke="#9aa6b2" strokeWidth={1.7} dot={false}/></LineChart></ResponsiveContainer></ChartFrame>:null}
+    <Panel title="Historical strategy test" note="Each signal is formed from information available before the return being measured">
+      <div className="metric-grid">
+        <label className="field"><span>Backtest mode</span><select className="search" value={mode} onChange={e=>setMode(e.target.value)}><option>FX moving average</option><option>Treasury bill yield momentum</option></select></label>
+        {isFx
+          ? <label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label>
+          : <label className="field"><span>Treasury bill tenor</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}>{TENORS.map(x=><option key={x} value={x}>{x} days</option>)}</select></label>}
+        <Field label={isFx?"Short average (observations)":"Yield-momentum lookback"} value={short} onChange={setShort} min="2" max="1000" step="1"/>
+        {isFx?<Field label="Long average (observations)" value={long} onChange={setLong} min="3" max="1000" step="1"/>:<Field label="Price sensitivity multiplier" value={duration} onChange={setDuration} min="0.01" max="100"/>}
+        <Field label="Cost per position change (basis points)" value={fee} onChange={setFee} min="0" max="1000"/>
+      </div>
+      {valid?<div className="metric-grid">
+        <Metric label="Strategy cumulative return" value={pct(strategyReturn)} note={isFx?"Long / cash FX moving-average rule":"Long / cash yield-momentum proxy"}/>
+        <Metric label={isFx?"Buy-and-hold return":"Continuous exposure proxy"} value={pct(benchmarkReturn)}/>
+        <Metric label="Strategy max drawdown" value={pct(worst)}/>
+        <Metric label="Entries" value={trades.toString()} note="Entries from cash into the model position"/>
+      </div>:<NoData message={isFx?"The short window must be below the long window, with enough observations for both windows.":"Choose a valid lookback and price-sensitivity multiplier; the selected Treasury-bill tenor needs more historical observations than the lookback."}/>}
+      {points.length?<ChartFrame height={320}><ResponsiveContainer><LineChart data={points}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Line dataKey="strategy" name="Strategy index" stroke="#087f8c" strokeWidth={2} dot={false}/><Line dataKey="benchmark" name={isFx?"Buy-and-hold index":"Continuous exposure index"} stroke="#9aa6b2" strokeWidth={1.7} dot={false}/></LineChart></ResponsiveContainer></ChartFrame>:null}
     </Panel>
-    <Panel title="Test design" note="Transparent assumptions">
-      <Table headers={["Rule","Implementation"]} rows={[["Entry","Prior short-window average above prior long-window average"],["Position","Long when signal is positive; otherwise cash"],["Execution timing","Signal uses only observations available before the return being measured"],["Trading cost","User-specified basis points on each entry or exit"],["Excluded factors","Spread, slippage, funding, taxes, market impact and tradeable execution"]]} />
+    <Panel title="Method and limitations" note="Research simulation only; no trades are placed">
+      {isFx?<Table headers={["Rule","Implementation"]} rows={[
+        ["Entry","Prior short-window average above prior long-window average"],
+        ["Position","Long the selected FX reference series while the signal is positive; otherwise cash"],
+        ["Timing","Signal uses only observations available before the return being measured"],
+        ["Trading cost","User-specified basis points on each entry or exit"],
+        ["Excluded factors","Spread, slippage, funding, taxes, liquidity and execution constraints"]
+      ]}/>:<Table headers={["Rule","Implementation"]} rows={[
+        ["Entry","Previous observed yield above the mean of the prior lookback window"],
+        ["Position","Long a duration-based price proxy while the yield-momentum signal is positive; otherwise cash"],
+        ["Price approximation","Daily price return ≈ − sensitivity multiplier × change in yield"],
+        ["Timing","Signal uses prior yields before the current yield change is applied"],
+        ["Trading cost","User-specified basis points on each entry or exit"],
+        ["Excluded factors","Actual bill pricing, reinvestment, taxes, liquidity, bid–ask spreads and settlement costs"]
+      ]}/>}
+      <p className="panel-note">{isFx?"The FX backtest uses observed exchange-rate returns.":"The Treasury bill strategy is a simplified price-sensitivity proxy based on the original yield-momentum engine; it is not an exact Treasury bill total-return series."} Both outputs are historical simulations and should not be interpreted as forecasts.</p>
     </Panel>
   </div>;
 }
