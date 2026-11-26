@@ -94,8 +94,9 @@ function marketFixture() {
   };
 }
 
-async function mockMarketApi(page: Page) {
+async function mockMarketApi(page: Page, mutate?: (fixture: ReturnType<typeof marketFixture>) => void) {
   const fixture = marketFixture();
+  mutate?.(fixture);
   await page.route("**/api/market", route => route.fulfill({
     status: 200,
     contentType: "application/json",
@@ -180,6 +181,45 @@ test("Market Intelligence compares momentum, volatility and aligned-date correla
   });
   expect(kpisFit).toBe(true);
   await expect(page.locator(".correlation-matrix-wrap")).toBeVisible();
+});
+
+test("Yield Curve uses one matched auction and presents an observed curve and forward-rate estimate", async ({ page }) => {
+  await mockMarketApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Yield Curve", exact: true }).click();
+
+  await expect(page.locator(".yield-curve-chart .recharts-surface")).toBeVisible();
+  await expect(page.locator(".yield-curve-slope-table tbody tr")).toHaveCount(3);
+  await expect(page.locator(".data-table").filter({ has: page.locator("th", { hasText: "Interpolated spot yield" }) }).locator("tbody tr")).toHaveCount(5);
+  await expect(page.locator(".metric-card").filter({ hasText: "Implied simple forward rate" }).locator(".metric-value")).not.toHaveText("—");
+  await expect(page.getByText(/same auction date/i).first()).toBeVisible();
+});
+
+test("Yield Curve does not extrapolate when the latest auction is missing a short tenor", async ({ page }) => {
+  await mockMarketApi(page, fixture => {
+    const latestDate = fixture.health.latest_bill_observation;
+    fixture.bills = fixture.bills.filter(row => row.date !== latestDate || row.tenor_days !== 91);
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Yield Curve", exact: true }).click();
+
+  await expect(page.getByText("Partial curve · 2 of 3 matched tenors")).toBeVisible();
+  const interpolationTable = page.locator(".data-table").filter({ has: page.locator("th", { hasText: "Interpolated spot yield" }) });
+  await expect(interpolationTable.locator("tbody tr").nth(0)).toContainText("Not available");
+  await expect(interpolationTable.locator("tbody tr").nth(1)).toContainText("Not available");
+  await expect(page.locator(".metric-card").filter({ hasText: "Implied simple forward rate" }).locator(".metric-value")).toHaveText("—");
+
+  await page.getByLabel("Forward period starts (days)").selectOption("182");
+  await page.getByLabel("Forward period ends (days)").selectOption("364");
+  await expect(page.locator(".metric-card").filter({ hasText: "Implied simple forward rate" }).locator(".metric-value")).not.toHaveText("—");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const controlsFit = await page.locator(".yield-curve-workspace .control-row").last().evaluate(element => {
+    const parent = element.getBoundingClientRect();
+    const fields = [...element.querySelectorAll(".field")].map(field => field.getBoundingClientRect());
+    return fields.every(field => field.left >= parent.left - 1 && field.right <= parent.right + 1);
+  });
+  expect(controlsFit).toBe(true);
 });
 
 test("all 16 workspaces open from navigation and show their own analytical graph", async ({ page }) => {
