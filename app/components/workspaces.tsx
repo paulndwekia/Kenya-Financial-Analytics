@@ -1,6 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  treasuryBillPrice, bondCashFlows, bondPrice, bondYtm, bondMetrics,
+  bondPriceSensitivity, blackScholes, historicalVaR, parametricVaR,
+  expectedShortfall, annualizedVolatility, sharpeRatio, sortinoRatio,
+  yieldCurveSlopes, classifyYieldCurve, interpolateYield,
+  bondPriceShock, treasuryBillReinvestmentShock, cbkRateScenarios,
+  curveScenario, portfolioMetrics
+} from "../../lib/finance.mjs";
 import { motion } from "motion/react";
 import {
   Activity, ArrowDownRight, ArrowUpRight, BarChart3, BookOpen, BriefcaseBusiness,
@@ -166,20 +174,10 @@ function YieldCurve({data}:{data:MarketPayload}){
   const short=latestCurve.find(x=>x.tenor_days===91),medium=latestCurve.find(x=>x.tenor_days===182),long=latestCurve.find(x=>x.tenor_days===364);
   const spread=short&&long?long.rate-short.rate:null;
   const ordered=[...latestCurve].sort((a,b)=>a.tenor_days-b.tenor_days);
-  const allUp=ordered.length>=2&&ordered.every((row,i)=>i===0||row.rate>=ordered[i-1].rate);
-  const allDown=ordered.length>=2&&ordered.every((row,i)=>i===0||row.rate<=ordered[i-1].rate);
-  const shape=ordered.length<2?"Not enough matched tenors":allUp?"Upward / normal":allDown?"Downward / inverted":"Mixed / humped";
-  const interpolate=(target:number):number|null=>{
-    if(target<91||target>364||ordered.length<2)return null;
-    for(let i=0;i<ordered.length-1;i++){
-      const left=ordered[i],right=ordered[i+1];
-      if(target>=left.tenor_days&&target<=right.tenor_days){
-        const proportion=(target-left.tenor_days)/(right.tenor_days-left.tenor_days);
-        return left.rate+proportion*(right.rate-left.rate);
-      }
-    }
-    return target===ordered.at(-1)?.tenor_days?ordered.at(-1)!.rate:null;
-  };
+  const curveRates=Object.fromEntries(ordered.map(row=>[row.tenor_days,row.rate])) as Record<number,number>;
+  const slopes=yieldCurveSlopes(curveRates);
+  const shape=classifyYieldCurve(curveRates).replace("UPWARD SLOPING","Upward / normal").replace("DOWNWARD SLOPING","Downward / inverted").replace("MIXED / HUMPED","Mixed / humped").replace("INSUFFICIENT DATA","Not enough matched tenors");
+  const interpolate=(target:number):number|null=>ordered.length>=2&&target>=91&&target<=364?interpolateYield(target,curveRates):null;
   const [startDays,setStartDays]=useState("91"),[endDays,setEndDays]=useState("364");
   const start=Number(startDays),end=Number(endDays),r1=interpolate(start),r2=interpolate(end);
   const t1=start/365,t2=end/365;
@@ -225,7 +223,7 @@ function TreasuryBills({data}:{data:MarketPayload}){
   const rates=rows.map(row=>row.rate);
   const capital=Number(face),annualRate=Number(yieldRate)/100,term=Number(days);
   const valid=[capital,annualRate,term].every(Number.isFinite)&&capital>0&&annualRate>=0&&term>=1&&term<=364;
-  const price=valid?capital/(1+annualRate*term/365):0;
+  const price=valid?treasuryBillPrice(capital,annualRate,term):0;
   const discount=valid?capital-price:0;
   const investmentReturn=valid&&price>0?discount/price:0;
   const annualised=valid&&term>0?investmentReturn*365/term:0;
@@ -234,7 +232,7 @@ function TreasuryBills({data}:{data:MarketPayload}){
   const latestAuction=data.bills.filter(row=>row.date===latestDate).sort((a,b)=>a.tenor_days-b.tenor_days);
   const comparisons=TENORS.map(days=>{
     const row=latestAuction.find(item=>item.tenor_days===days);
-    const purchase=row&&capital>0?capital/(1+row.rate*days/365):null;
+    const purchase=row&&capital>0?treasuryBillPrice(capital,row.rate,days):null;
     return {days,row,purchase,discount:purchase===null?null:capital-purchase};
   });
   return <div className="workspace-stack">
@@ -265,31 +263,18 @@ function BondPricing(){
   const valid=[f,c,y,n,t].every(Number.isFinite)&&f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n);
   const marketPriceValid=Number.isFinite(observedPrice)&&observedPrice>0;
   const shockValid=Number.isFinite(dy)&&Math.abs(Number(shockBps))<=5000;
-  const periods=valid?Math.max(1,Math.round(t*n)):0,cashCoupon=f*c/n,periodic=y/n;
-  const flows=Array.from({length:periods},(_,i)=>({period:i+1,time:(i+1)/n,cash:cashCoupon+(i===periods-1?f:0),pv:(cashCoupon+(i===periods-1?f:0))/Math.pow(1+periodic,i+1)}));
-  const price=valid?flows.reduce((sum,row)=>sum+row.pv,0):0;
-  const macaulay=price?flows.reduce((sum,row)=>sum+row.time*row.pv,0)/price:0;
-  const modified=macaulay/(1+periodic);
-  const convexity=price?flows.reduce((sum,row)=>sum+row.period*(row.period+1)*row.cash/(n*n*Math.pow(1+periodic,row.period+2)),0)/price:0;
-  const priceAt=(yieldRate:number)=>{
-    const rate=yieldRate/n;
-    return Array.from({length:periods},(_,i)=>(cashCoupon+(i===periods-1?f:0))/Math.pow(1+rate,i+1)).reduce((sum,value)=>sum+value,0);
-  };
+  const periods=valid?Math.max(1,Math.round(t*n)):0;
+  const model=valid?bondMetrics(f,c,y,t,n):null;
+  const price=model?.price||0,macaulay=model?.macaulay_duration||0,modified=model?.modified_duration||0,convexity=model?.convexity||0;
+  const flows=valid?bondCashFlows(f,c,t,n).map(row=>({...row,pv:row.cash_flow/Math.pow(1+y/n,row.period)})):[];
+  const priceAt=(yieldRate:number)=>bondPrice(f,c,yieldRate,t,n);
   const minPrice=valid?priceAt(2.0):0,maxPrice=valid?priceAt(-.99):0;
   const ytmValid=valid&&marketPriceValid&&observedPrice>=minPrice&&observedPrice<=maxPrice;
-  let low=-.99,high=2.0,impliedYtm:number|null=null;
-  if(ytmValid){
-    for(let i=0;i<120;i++){
-      const mid=(low+high)/2;
-      const estimate=priceAt(mid);
-      if(Math.abs(estimate-observedPrice)<1e-8){low=mid;high=mid;break;}
-      if(estimate>observedPrice)low=mid;else high=mid;
-    }
-    impliedYtm=(low+high)/2;
-  }
-  const estimatedChange=-modified*dy+.5*convexity*dy*dy;
-  const shockedPrice=price*(1+estimatedChange);
-  const sensitivityValid=valid&&shockValid&&Number.isFinite(shockedPrice)&&shockedPrice>0;
+  const impliedYtm=ytmValid?bondYtm(f,c,observedPrice,t,n):null;
+  const sensitivity=valid&&shockValid?bondPriceSensitivity(f,c,y,t,dy,n):null;
+  const estimatedChange=sensitivity?sensitivity.estimated_change_percent/100:0;
+  const shockedPrice=sensitivity?.estimated_price||0;
+  const sensitivityValid=!!sensitivity&&Number.isFinite(shockedPrice)&&shockedPrice>0;
   return <div className="workspace-stack">
     <Panel title="Fixed-rate bond valuation" note="Periodic coupon discounting with the original annual, semi-annual and quarterly payment frequencies">
       <div className="metric-grid"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual coupon rate (%)" value={coupon} onChange={setCoupon} min="0" max="100"/><Field label="Yield to maturity (%)" value={ytm} onChange={setYtm} min="-99"/><Field label="Years to maturity" value={years} onChange={setYears} min="0.01" max="100"/><label className="field"><span>Payments per year</span><select className="search" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="1">Annual</option><option value="2">Semi-annual</option><option value="4">Quarterly</option></select></label></div>
@@ -310,24 +295,12 @@ function BondPricing(){
   </div>;
 }
 
-function normalPdf(x:number){return Math.exp(-.5*x*x)/Math.sqrt(2*Math.PI);}
-function normalCdf(x:number){
-  const sign=x<0?-1:1,z=Math.abs(x)/Math.sqrt(2),t=1/(1+.3275911*z);
-  const erf=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-.284496736)*t+.254829592)*t*Math.exp(-z*z);
-  return .5*(1+sign*erf);
-}
 function OptionsGreeks(){
   const [spot,setSpot]=useState("100"),[strike,setStrike]=useState("100"),[maturity,setMaturity]=useState("1"),[riskFree,setRiskFree]=useState("13"),[volatility,setVolatility]=useState("20"),[kind,setKind]=useState("Call");
   const S=Number(spot),K=Number(strike),T=Number(maturity),r=Number(riskFree)/100,sigma=Number(volatility)/100;
   const valid=[S,K,T,sigma,r].every(Number.isFinite)&&S>0&&K>0&&T>0&&sigma>0&&r>-1;
-  const d1=valid?(Math.log(S/K)+(r+sigma*sigma/2)*T)/(sigma*Math.sqrt(T)):0,d2=d1-sigma*Math.sqrt(Math.max(T,0));
-  const disc=Math.exp(-r*T),pdf=normalPdf(d1);
-  const price=valid?(kind==="Call"?S*normalCdf(d1)-K*disc*normalCdf(d2):K*disc*normalCdf(-d2)-S*normalCdf(-d1)):0;
-  const delta=kind==="Call"?normalCdf(d1):normalCdf(d1)-1;
-  const gamma=valid?pdf/(S*sigma*Math.sqrt(T)):0;
-  const vega=valid?S*pdf*Math.sqrt(T)/100:0;
-  const theta=valid?(kind==="Call"?(-S*pdf*sigma/(2*Math.sqrt(T))-r*K*disc*normalCdf(d2)):(-S*pdf*sigma/(2*Math.sqrt(T))+r*K*disc*normalCdf(-d2)))/365:0;
-  const rho=valid?(kind==="Call"?K*T*disc*normalCdf(d2):-K*T*disc*normalCdf(-d2))/100:0;
+  const greeks=valid?blackScholes({spot:S,strike:K,time:T,rate:r,volatility:sigma,type:kind as "Call"|"Put"}):null;
+  const price=greeks?.price||0,delta=greeks?.delta||0,gamma=greeks?.gamma||0,vega=greeks?.vega||0,theta=greeks?.theta||0,rho=greeks?.rho||0;
   return <div className="workspace-stack">
     <Panel title="Black–Scholes model" note="European option; continuous risk-free rate, no dividends or transaction costs" action={<select className="search" value={kind} onChange={e=>setKind(e.target.value)}><option>Call</option><option>Put</option></select>}>
       <div className="metric-grid"><Field label="Underlying price" value={spot} onChange={setSpot} min="0.01"/><Field label="Strike price" value={strike} onChange={setStrike} min="0.01"/><Field label="Time to expiry (years)" value={maturity} onChange={setMaturity} min="0.001"/><Field label="Risk-free rate (%)" value={riskFree} onChange={setRiskFree}/><Field label="Volatility (%)" value={volatility} onChange={setVolatility} min="0.01"/></div>
