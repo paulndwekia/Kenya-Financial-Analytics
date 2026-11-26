@@ -412,7 +412,12 @@ def build_workbook(fx, bills, refresh):
     for col, width in enumerate(bill_widths):
         bill_sheet.set_column(col, col, width)
     bill_headers = ["Auction date", "Tenor (days)", "Accepted yield", "Price / KES 100*", "Issue number", "Amount offered (KES)", "Amount accepted (KES)", "Published source", "Source URL"]
-    bill_sheet.write_row(0, 0, bill_headers, history_header)
+    bill_header = workbook.add_format({
+        "bold": True, "font_color": NAVY, "bg_color": GOLD,
+        "font_size": 9, "text_wrap": True, "valign": "vcenter",
+        "bottom": 2, "bottom_color": NAVY,
+    })
+    bill_sheet.write_row(0, 0, bill_headers, bill_header)
     for row_idx, row in enumerate(bills, start=1):
         auction_date = as_date(row["auction_date"])
         rate = float(row["accepted_rate"])
