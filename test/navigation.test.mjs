@@ -68,7 +68,7 @@ test("chart views use separate modules for separate analytical tasks", () => {
   const explorer = functionSource("HistoricalExplorer");
   const stress = functionSource("StressTesting");
   assert.match(bond, /Bond price across yield scenarios/);
-  assert.match(bond, /Coupon and redemption profile/);
+  assert.match(bond, /Annual coupon and principal profile/);
   assert.match(options, /Option value versus underlying price/);
   assert.match(options, /Delta and gamma by underlying price/);
   assert.match(risk, /Daily return distribution/);
