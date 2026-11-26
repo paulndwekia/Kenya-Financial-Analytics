@@ -362,7 +362,7 @@ function MarketIntelligence({data}:{data:MarketPayload}){
           <XAxis dataKey="pair" tick={{fontSize:10,fill:"#8291a0"}}/>
           <YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%" width={52}/>
           <ReferenceLine y={0} stroke="#9aa6b2"/>
-          <Tooltip contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}} formatter={(value)=>pct(Number(value)/100,3)} labelFormatter={label=>"Currency pair: "+String(label)}/>
+          <Tooltip contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}} formatter={(value:unknown)=>pct(Number(value)/100,3)} labelFormatter={label=>"Currency pair: "+String(label)}/>
           <Bar dataKey="move" name="Quote movement" radius={[4,4,0,0]}>{chartRows.map(row=><Cell key={row.pair} fill={row.move>=0?"#d5a43b":"#087f8c"}/>)}</Bar>
         </BarChart></ResponsiveContainer></ChartFrame>:<NoData message="No currency pair has enough observations for the selected comparison window."/>}
       </Panel>
