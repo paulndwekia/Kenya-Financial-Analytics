@@ -20,16 +20,18 @@ class FinancialReportTests(unittest.TestCase):
                 {"observation_date": date(2026, 11, 25), "instrument": pair, "rate": end,
                  "source": "Central Bank of Kenya", "source_url": "https://www.centralbank.go.ke/new-rates/"},
             ])
-        self.bills = [
-            {"auction_date": date(2026, 11, 23), "tenor_days": tenor, "accepted_rate": rate,
-             "price": None, "amount_offered": 10000000000, "amount_accepted": 9000000000,
-             "issue_number": f"2709/{tenor}", "source": "Central Bank of Kenya",
-             "source_url": "https://www.centralbank.go.ke/"},
-            {"auction_date": date(2026, 11, 16), "tenor_days": tenor, "accepted_rate": rate - 0.001,
-             "price": None, "amount_offered": 10000000000, "amount_accepted": 8000000000,
-             "issue_number": f"2708/{tenor}", "source": "Central Bank of Kenya",
-             "source_url": "https://www.centralbank.go.ke/"},
-        ]
+        self.bills = []
+        for tenor, rate in [(91, 0.087), (182, 0.088), (364, 0.090)]:
+            self.bills.extend([
+                {"auction_date": date(2026, 11, 23), "tenor_days": tenor, "accepted_rate": rate,
+                 "price": None, "amount_offered": 10000000000, "amount_accepted": 9000000000,
+                 "issue_number": f"2709/{tenor}", "source": "Central Bank of Kenya",
+                 "source_url": "https://www.centralbank.go.ke/"},
+                {"auction_date": date(2026, 11, 16), "tenor_days": tenor, "accepted_rate": rate - 0.001,
+                 "price": None, "amount_offered": 10000000000, "amount_accepted": 8000000000,
+                 "issue_number": f"2708/{tenor}", "source": "Central Bank of Kenya",
+                 "source_url": "https://www.centralbank.go.ke/"},
+            ])
         self.refresh = {
             "source": "CBK scheduled refresh",
             "status": "success",
@@ -50,6 +52,8 @@ class FinancialReportTests(unittest.TestCase):
             self.assertIn("FX History", workbook_xml)
             self.assertIn("Treasury Bills", workbook_xml)
             self.assertIn("Methodology", workbook_xml)
+            self.assertIn("KENYA FINANCIAL ANALYTICS", archive.read("xl/worksheets/sheet1.xml").decode("utf-8"))
+            self.assertIn("Market Research Report", workbook_xml)
             chart_files = [name for name in archive.namelist() if name.startswith("xl/charts/chart") and name.endswith(".xml")]
             self.assertGreaterEqual(len(chart_files), 2)
 
