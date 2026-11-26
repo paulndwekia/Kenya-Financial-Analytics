@@ -255,7 +255,8 @@ test("module controls change the calculations and data views", async ({ page }) 
   // Portfolio: weights must balance to 100% before the basket is valued.
   await page.getByRole("button", { name: "Portfolio", exact: true }).click();
   await page.getByLabel("USD/KES weight (%)").fill("50");
-  await expect(page.getByText(/exactly 100%/i)).toBeVisible();
+  await expect(page.getByText("Total allocation: 110.00%", { exact: false })).toBeVisible();
+  await expect(page.getByText(/weights totalling exactly 100%/i)).toBeVisible();
   await page.getByLabel("GBP/KES weight (%)").fill("20");
   await expect(page.getByText("Total allocation: 100.00%", { exact: false })).toBeVisible();
   await expect(page.locator(".recharts-area")).toBeVisible();
