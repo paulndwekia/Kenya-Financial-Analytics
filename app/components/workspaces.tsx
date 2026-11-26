@@ -262,7 +262,9 @@ function BondPricing(){
   const [marketPrice,setMarketPrice]=useState("95000"),[shockBps,setShockBps]=useState("100");
   const f=Number(face),c=Number(coupon)/100,y=Number(ytm)/100,n=Number(frequency),t=Number(years);
   const observedPrice=Number(marketPrice),dy=Number(shockBps)/10000;
-  const valid=[f,c,y,n,t,observedPrice,dy].every(Number.isFinite)&&f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n)&&observedPrice>0&&Math.abs(Number(shockBps))<=5000;
+  const valid=[f,c,y,n,t].every(Number.isFinite)&&f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n);
+  const marketPriceValid=Number.isFinite(observedPrice)&&observedPrice>0;
+  const shockValid=Number.isFinite(dy)&&Math.abs(Number(shockBps))<=5000;
   const periods=valid?Math.max(1,Math.round(t*n)):0,cashCoupon=f*c/n,periodic=y/n;
   const flows=Array.from({length:periods},(_,i)=>({period:i+1,time:(i+1)/n,cash:cashCoupon+(i===periods-1?f:0),pv:(cashCoupon+(i===periods-1?f:0))/Math.pow(1+periodic,i+1)}));
   const price=valid?flows.reduce((sum,row)=>sum+row.pv,0):0;
@@ -274,7 +276,7 @@ function BondPricing(){
     return Array.from({length:periods},(_,i)=>(cashCoupon+(i===periods-1?f:0))/Math.pow(1+rate,i+1)).reduce((sum,value)=>sum+value,0);
   };
   const minPrice=valid?priceAt(2.0):0,maxPrice=valid?priceAt(-.99):0;
-  const ytmValid=valid&&observedPrice>=minPrice&&observedPrice<=maxPrice;
+  const ytmValid=valid&&marketPriceValid&&observedPrice>=minPrice&&observedPrice<=maxPrice;
   let low=-.99,high=2.0,impliedYtm:number|null=null;
   if(ytmValid){
     for(let i=0;i<120;i++){
@@ -287,7 +289,7 @@ function BondPricing(){
   }
   const estimatedChange=-modified*dy+.5*convexity*dy*dy;
   const shockedPrice=price*(1+estimatedChange);
-  const sensitivityValid=valid&&Number.isFinite(shockedPrice)&&shockedPrice>0;
+  const sensitivityValid=valid&&shockValid&&Number.isFinite(shockedPrice)&&shockedPrice>0;
   return <div className="workspace-stack">
     <Panel title="Fixed-rate bond valuation" note="Periodic coupon discounting with the original annual, semi-annual and quarterly payment frequencies">
       <div className="metric-grid"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual coupon rate (%)" value={coupon} onChange={setCoupon} min="0" max="100"/><Field label="Yield to maturity (%)" value={ytm} onChange={setYtm} min="-99"/><Field label="Years to maturity" value={years} onChange={setYears} min="0.01" max="100"/><label className="field"><span>Payments per year</span><select className="search" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="1">Annual</option><option value="2">Semi-annual</option><option value="4">Quarterly</option></select></label></div>
