@@ -100,30 +100,104 @@ function seriesFor(fx:FxRow[],pair:string){
 }
 function latestByPair(fx:FxRow[],pair:string){const rows=pairRows(fx,pair);return rows[rows.length-1]||null;}
 function Dashboard({data,loading}:{data:MarketPayload|null;loading:boolean}){
-  const fx=data?.fx||[],bills=data?.bills||[];
-  const latestBills=useMemo(()=>{const d=bills.reduce((latest,row)=>!latest||row.date>latest?row.date:latest,"");return bills.filter(row=>row.date===d).sort((a,b)=>a.tenor_days-b.tenor_days);},[bills]);
-  const chart=pairRows(fx,"USD/KES").slice(-50).map(x=>({date:x.date.slice(5),rate:x.value}));
-  return <div className="workspace-stack">
-    <div className="metric-grid">
-      {PAIRS.map(pair=>{const row=latestByPair(fx,pair);return <Metric key={pair} label={pair} value={row?row.value.toFixed(4):"—"} note={row?"CBK observation · "+row.date:"No stored observation"}/>})}
-      <Metric label="Database" value={data?.health.database_connected?"Connected":"Unavailable"} note={data?.health.database||"Waiting for response"}/>
+  const fx=data?.fx||[];
+  const bills=data?.bills||[];
+  const latestBills=useMemo(()=>{
+    const latestDate=bills.reduce((latest,row)=>!latest||row.date>latest?row.date:latest,"");
+    return bills.filter(row=>row.date===latestDate).sort((x,y)=>x.tenor_days-y.tenor_days);
+  },[bills]);
+
+  const quoteCards=PAIRS.map(pair=>{
+    const rows=pairRows(fx,pair);
+    const latest=rows.at(-1);
+    const previous=rows.at(-2);
+    const dailyChange=latest&&previous&&previous.value!==0?latest.value/previous.value-1:null;
+    return {pair,latest,dailyChange};
+  });
+
+  const indexedHistory=useMemo(()=>{
+    const pairHistory=PAIRS.map(pair=>({pair,rows:pairRows(fx,pair).slice(-50)}));
+    const firstByPair=new Map(pairHistory.map(item=>[item.pair,item.rows[0]?.value||null]));
+    const byDate=new Map<string,Record<string,number|string|null>>();
+    for(const item of pairHistory){
+      const base=firstByPair.get(item.pair);
+      if(!base)continue;
+      for(const row of item.rows){
+        if(!byDate.has(row.date))byDate.set(row.date,{date:row.date});
+        byDate.get(row.date)![item.pair]=row.value/base*100;
+      }
+    }
+    return [...byDate.values()].sort((x,y)=>String(x.date).localeCompare(String(y.date)));
+  },[fx]);
+
+  const latestAuctionDate=latestBills[0]?.date||null;
+  const presentTenors=latestBills.length;
+  const refresh=data?.health?.last_refresh||null;
+  const importStatus=refresh?.status||"not recorded";
+  const statusLabel=importStatus==="success"?"Successful":importStatus==="partial"?"Partially successful":importStatus==="failed"?"Failed":importStatus==="running"?"In progress":"Not recorded";
+  const statusClass=importStatus==="success"?"health-good":importStatus==="partial"?"health-warning":importStatus==="failed"?"health-bad":"health-neutral";
+
+  return <div className="workspace-stack dashboard-workspace">
+    <div className="dashboard-quote-grid">
+      {quoteCards.map(({pair,latest,dailyChange})=>
+        <div className="dashboard-quote-card" key={pair}>
+          <div className="dashboard-quote-top"><span>{pair}</span><span className="dashboard-quote-date">{latest?.date||"No CBK data"}</span></div>
+          <div className="dashboard-quote-value">{latest?latest.value.toFixed(4):"—"}</div>
+          <div className="dashboard-quote-bottom">
+            <span>Daily movement</span>
+            {dailyChange===null?<span className="dashboard-quote-flat">—</span>:<span className={dailyChange>0?"dashboard-change dashboard-change-up":dailyChange<0?"dashboard-change dashboard-change-down":"dashboard-quote-flat"}>{dailyChange>0?"+":""}{pct(dailyChange,3)}</span>}
+          </div>
+        </div>
+      )}
     </div>
-    <div className="dashboard-grid">
-      <Panel title="USD / KES" note="Daily mean rate · 50 most recent observations">
-        <ChartFrame><ResponsiveContainer><AreaChart data={chart}><defs><linearGradient id="usdFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#087f8c" stopOpacity={.18}/><stop offset="95%" stopColor="#087f8c" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" tick={{fontSize:10,fill:"#8291a0"}} axisLine={false} tickLine={false}/><YAxis domain={["auto","auto"]} tick={{fontSize:10,fill:"#8291a0"}} axisLine={false} tickLine={false} width={48}/><ChartTooltip/><Area type="monotone" dataKey="rate" stroke="#087f8c" strokeWidth={2.2} fill="url(#usdFill)" activeDot={{r:4}}/></AreaChart></ResponsiveContainer></ChartFrame>
+
+    <div className="dashboard-grid dashboard-market-grid">
+      <Panel title="KES exchange-rate performance" note="Relative index · first observation in each displayed series = 100">
+        {indexedHistory.length>1?<ChartFrame height={310}><ResponsiveContainer><LineChart data={indexedHistory} margin={{top:12,right:12,bottom:4,left:2}}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+          <XAxis dataKey="date" minTickGap={26} tick={{fontSize:10,fill:"#8291a0"}} axisLine={false} tickLine={false}/>
+          <YAxis tick={{fontSize:10,fill:"#8291a0"}} domain={["auto","auto"]} width={48}/>
+          <ReferenceLine y={100} stroke="#9aa6b2" strokeDasharray="4 4"/>
+          <ChartTooltip/>
+          <Line type="monotone" dataKey="USD/KES" name="USD/KES" stroke="#087f8c" strokeWidth={2.2} dot={false} connectNulls={false} activeDot={{r:4}}/>
+          <Line type="monotone" dataKey="GBP/KES" name="GBP/KES" stroke="#356bb3" strokeWidth={2.2} dot={false} connectNulls={false} activeDot={{r:4}}/>
+          <Line type="monotone" dataKey="EUR/KES" name="EUR/KES" stroke="#d5a43b" strokeWidth={2.2} dot={false} connectNulls={false} activeDot={{r:4}}/>
+        </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="At least two observations per currency pair are needed for the relative performance view."/>}
+        <p className="panel-note">The index makes percentage movement comparable across pairs with different quote levels. It is a historical comparison, not a currency forecast.</p>
       </Panel>
-      <Panel title="Treasury bill curve" note={latestBills[0]?.date||"No auction records"}>
-        <div className="market-list">{TENORS.map(tenor=>{const row=latestBills.find(x=>x.tenor_days===tenor);return <div className="market-row" key={tenor}><div className="instrument">{tenor}-day<small>{row?.issue_number||"Latest recorded auction"}</small></div><div className="rate">{row?pct(row.rate,4):"—"}</div><div className="panel-note">{row?.date||"No record"}</div></div>})}</div>
-        <div className="panel-note" style={{marginTop:12}}>Rates are stored as decimal yields and displayed as annual percentages.</div>
+
+      <Panel title="Latest Treasury bill auction" note={latestAuctionDate||"No auction records"}>
+        <div className="market-list">
+          {TENORS.map(tenor=>{
+            const row=latestBills.find(item=>item.tenor_days===tenor);
+            return <div className="market-row dashboard-bill-row" key={tenor}>
+              <div className="instrument">{tenor}-day<small>{row?.issue_number||"No issue reference"}</small></div>
+              <div className="rate">{row?pct(row.rate,4):"—"}</div>
+              <div className="panel-note">{row?.date||"No result"}</div>
+            </div>;
+          })}
+        </div>
+        <div className={presentTenors===TENORS.length?"dashboard-auction-note":"dashboard-auction-note warning"}>
+          {presentTenors===TENORS.length?"All three tenors are available for this auction.":presentTenors+" of "+TENORS.length+" tenors are recorded for this auction date."}
+        </div>
+        <p className="panel-note">CBK market-weighted accepted yields. Different auction dates are not combined into one curve.</p>
       </Panel>
     </div>
-    <Panel title="Data coverage" note="Counts are read directly from the Neon market database">
-      <div className="metric-grid"><Metric label="FX observations" value={(data?.health.fx_rows||0).toLocaleString("en-KE")} note={"Latest "+(data?.health.latest_fx_observation||"not available")}/><Metric label="Auction observations" value={(data?.health.bills_rows||0).toLocaleString("en-KE")} note={"Latest "+(data?.health.latest_bill_observation||"not available")}/><Metric label="Last successful import" value={data?.health.last_refresh?.completed_at?new Date(data.health.last_refresh.completed_at).toLocaleString("en-KE"):"Not yet recorded"} note={data?.health.last_refresh?.source||"Waiting for scheduled CBK refresh"}/></div>
-      {loading&&<div className="panel-note">Checking the market data service…</div>}
+
+    <Panel title="Market data operations" note="Database status and latest recorded CBK import attempt">
+      <div className="dashboard-health-grid">
+        <div className="dashboard-health-item"><span className="dashboard-health-label">Database connection</span><strong>{data?.health?.database_connected?"Connected":"Unavailable"}</strong><small>{data?.health?.database||"Waiting for database response"}</small></div>
+        <div className="dashboard-health-item"><span className="dashboard-health-label">Latest import attempt</span><strong className={statusClass}>{statusLabel}</strong><small>{refresh?.completed_at?new Date(refresh.completed_at).toLocaleString("en-KE"):"No import attempt recorded"}</small></div>
+        <div className="dashboard-health-item"><span className="dashboard-health-label">FX records stored</span><strong>{(data?.health?.fx_rows||0).toLocaleString("en-KE")}</strong><small>Latest observation · {data?.health?.latest_fx_observation||"—"}</small></div>
+        <div className="dashboard-health-item"><span className="dashboard-health-label">Auction records stored</span><strong>{(data?.health?.bills_rows||0).toLocaleString("en-KE")}</strong><small>Latest observation · {data?.health?.latest_bill_observation||"—"}</small></div>
+      </div>
+      {refresh&&<div className="dashboard-import-foot"><span>Last attempt source: {refresh.source}</span><span>{refresh.fx_rows_upserted.toLocaleString("en-KE")} FX rows · {refresh.bill_rows_upserted.toLocaleString("en-KE")} auction rows reported</span></div>}
+      {data?.health?.warnings?.length?data.health.warnings.map((warning,index)=><p className="dashboard-warning" key={index}>{warning}</p>):null}
+      {loading&&<p className="panel-note">Refreshing market data from the connected database…</p>}
+      {!refresh&&<p className="panel-note">A database connection confirms storage availability; it does not by itself confirm that a fresh CBK import has run.</p>}
     </Panel>
   </div>;
 }
-
 function KenyanMarket({data}:{data:MarketPayload}){
   const [pair,setPair]=useState<string>("USD/KES");
   const {rows,values,rets}=seriesFor(data.fx,pair);
