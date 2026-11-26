@@ -155,6 +155,33 @@ test("Kenyan Market isolates one FX pair and updates its chosen observation wind
   expect(metricsFit).toBe(true);
 });
 
+test("Market Intelligence compares momentum, volatility and aligned-date correlations", async ({ page }) => {
+  await mockMarketApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Market Intelligence", exact: true }).click();
+
+  await expect(page.locator(".intelligence-kpis .metric-card")).toHaveCount(4);
+  await expect(page.locator(".intelligence-momentum-chart .recharts-bar-rectangle")).toHaveCount(3);
+  await expect(page.locator(".intelligence-scatter-chart .recharts-scatter-symbol")).toHaveCount(3);
+  await expect(page.locator(".correlation-matrix tbody tr")).toHaveCount(3);
+  await expect(page.locator(".correlation-matrix tbody tr").first().locator("td")).toHaveCount(3);
+  await expect(page.locator(".intelligence-ranking-table")).toContainText("20-observation move");
+
+  await page.getByRole("button", { name: "5 obs.", exact: true }).click();
+  await expect(page.locator(".intelligence-ranking-table")).toContainText("5-observation move");
+  await page.getByRole("button", { name: "60 obs.", exact: true }).click();
+  await expect(page.locator(".intelligence-ranking-table")).toContainText("60-observation move");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const kpisFit = await page.locator(".intelligence-kpis").evaluate(element => {
+    const parent = element.getBoundingClientRect();
+    const cards = [...element.querySelectorAll(".metric-card")].map(card => card.getBoundingClientRect());
+    return cards.every(card => card.left >= parent.left - 1 && card.right <= parent.right + 1);
+  });
+  expect(kpisFit).toBe(true);
+  await expect(page.locator(".correlation-matrix-wrap")).toBeVisible();
+});
+
 test("all 16 workspaces open from navigation and show their own analytical graph", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", error => pageErrors.push(error.message));
