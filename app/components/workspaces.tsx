@@ -275,31 +275,127 @@ function KenyanMarket({data}:{data:MarketPayload}){
   </div>;
 }
 function MarketIntelligence({data}:{data:MarketPayload}){
-  const rows=PAIRS.map(pair=>{
-    const {rows,values,rets}=seriesFor(data.fx,pair);
-    const latest=values.at(-1),prior=values.at(-2),weekPrior=values.at(-6);
-    const day=latest!==undefined&&prior?latest/prior-1:null;
-    const week=latest!==undefined&&weekPrior?latest/weekPrior-1:null;
-    const volatility=stdev(rets)*Math.sqrt(252);
-    const signal=day===null?"Insufficient history":day>.005?"Shilling weaker":day<-.005?"Shilling firmer":"Little changed";
-    return {pair,latest,day,week,volatility,signal,date:rows.at(-1)?.date||"—"};
+  const [horizon,setHorizon]=useState(20);
+  const windowOptions=[5,20,60];
+  const pairSeries=PAIRS.map(pair=>{
+    const observations=pairRows(data.fx,pair);
+    const closes=observations.map(row=>row.value);
+    const dailyReturns=returns(closes);
+    const latest=observations.at(-1);
+    const previous=observations.at(-2);
+    const intervals=Math.min(horizon,Math.max(0,observations.length-1));
+    const base=intervals?closes[closes.length-1-intervals]:undefined;
+    const momentum=base&&base!==0&&latest?latest.value/base-1:null;
+    const dailyMove=latest&&previous&&previous.value!==0?latest.value/previous.value-1:null;
+    const volatility=dailyReturns.length>1?stdev(dailyReturns)*Math.sqrt(252):null;
+    return {pair,observations,closes,dailyReturns,latest,previous,dailyMove,momentum,volatility,intervals};
   });
-  const chart=rows.map(x=>({pair:x.pair,change:x.day===null?0:x.day*100,volatility:x.volatility*100}));
-  return <div className="workspace-stack">
-    <Panel title="Currency comparison" note="Signals describe the latest observed change, not a forecast">
-      <Table headers={["Pair","Latest","Daily move","5-observation move","Annualised volatility","Reading"]} rows={rows.map(x=>[x.pair,x.latest?.toFixed(4)||"—",x.day===null?"—":pct(x.day,3),x.week===null?"—":pct(x.week,3),pct(x.volatility,2),x.signal])}/>
+
+  const correlationRows=useMemo(()=>{
+    const maps=PAIRS.map(pair=>{
+      const observations=pairRows(data.fx,pair);
+      const map=new Map<string,number>();
+      for(let i=1;i<observations.length;i++){
+        const prev=observations[i-1],current=observations[i];
+        if(prev.value>0&&current.value>0)map.set(current.date,current.value/prev.value-1);
+      }
+      return {pair,map};
+    });
+    const correlations=maps.map((left,i)=>maps.map((right,j)=>{
+      const common=[...left.map.keys()].filter(date=>right.map.has(date));
+      if(i===j)return {value:1,count:common.length};
+      if(common.length<3)return {value:null,count:common.length};
+      const xs=common.map(date=>left.map.get(date)!),ys=common.map(date=>right.map.get(date)!);
+      const mx=mean(xs),my=mean(ys);
+      const sx=Math.sqrt(mean(xs.map(x=>(x-mx)**2))),sy=Math.sqrt(mean(ys.map(y=>(y-my)**2)));
+      const covariance=mean(xs.map((x,k)=>(x-mx)*(ys[k]-my)));
+      return {value:sx>0&&sy>0?Math.max(-1,Math.min(1,covariance/(sx*sy))):null,count:common.length};
+    }));
+    return correlations;
+  },[data.fx]);
+
+  const momentumRows=pairSeries.map(row=>({
+    ...row,movePercent:row.momentum===null?null:row.momentum*100,
+    dailyPercent:row.dailyMove===null?null:row.dailyMove*100,
+    volatilityPercent:row.volatility===null?null:row.volatility*100,
+    reading:row.momentum===null?"Insufficient history":row.momentum>.0025?"KES weaker":row.momentum<-.0025?"KES firmer":"Little changed"
+  }));
+  const ranked=[...momentumRows].filter(row=>row.momentum!==null).sort((a,b)=>b.momentum!-a.momentum!);
+  const mostVolatile=[...momentumRows].filter(row=>row.volatility!==null).sort((a,b)=>b.volatility!-a.volatility!)[0];
+  const latestDates=pairSeries.map(row=>row.latest?.date).filter((date):date is string=>Boolean(date));
+  const commonStart=pairSeries.map(row=>row.observations.at(-Math.min(horizon+1,row.observations.length))?.date).filter((date):date is string=>Boolean(date));
+  const alignedCounts=correlationRows.map(row=>row.map(cell=>cell.count));
+  const commonDates=Math.min(...alignedCounts.flat().filter(count=>count>0));
+  const chartRows=momentumRows.filter(row=>row.momentum!==null).map(row=>({pair:row.pair,move:row.movePercent!,volatility:row.volatilityPercent??0,reading:row.reading}));
+  const chartCorrelation=momentumRows.filter(row=>row.movePercent!==null&&row.volatilityPercent!==null).map(row=>({pair:row.pair,x:row.volatilityPercent!,y:row.movePercent!}));
+  const averageAbsCorrelation=(()=>{
+    const values=[correlationRows[0]?.[1]?.value,correlationRows[0]?.[2]?.value,correlationRows[1]?.[2]?.value].filter((value):value is number=>value!==null&&value!==undefined);
+    return values.length?mean(values.map(Math.abs)):null;
+  })();
+  const horizonLabel=horizon+"-observation";
+  const formatMove=(value:number|null)=>value===null?"—":(value>0?"+":"")+pct(value,3);
+  const correlationClass=(value:number|null)=>value===null?"correlation-missing":value>=.7?"correlation-high":value>=.3?"correlation-mid":value<=-.7?"correlation-negative":"correlation-low";
+
+  return <div className="workspace-stack market-intelligence-workspace">
+    <Panel title="Cross-currency momentum" note="Rank recent quote movement across the tracked pairs; a rising quote means the KES is weaker">
+      <div className="intelligence-controls">
+        <div><span className="intelligence-control-label">Comparison horizon</span><div className="market-range-group" role="group" aria-label="Momentum horizon">
+          {windowOptions.map(value=><button type="button" key={value} className={horizon===value?"active":""} aria-pressed={horizon===value} onClick={()=>setHorizon(value)}>{value} obs.</button>)}
+        </div></div>
+        <div className="intelligence-coverage"><span>Latest observations</span><strong>{latestDates.length?latestDates.sort().at(-1):"—"}</strong><small>Window shown in trading observations, not calendar days</small></div>
+      </div>
+      <div className="intelligence-kpis">
+        <Metric label="Largest KES weakening" value={ranked.length?ranked[0].pair:"—"} note={ranked.length?formatMove(ranked[0].momentum)+" over "+horizonLabel:"Insufficient history"}/>
+        <Metric label="Largest KES strengthening" value={ranked.length?ranked.at(-1)!.pair:"—"} note={ranked.length?formatMove(ranked.at(-1)!.momentum)+" over "+horizonLabel:"Insufficient history"}/>
+        <Metric label="Most volatile pair" value={mostVolatile?.pair||"—"} note={mostVolatile?.volatility===null||!mostVolatile?"Insufficient history":pct(mostVolatile.volatility,2)+" annualised"}/>
+        <Metric label="Average absolute correlation" value={averageAbsCorrelation===null?"—":averageAbsCorrelation.toFixed(3)} note="Pairwise daily returns · aligned dates"/>
+      </div>
+      <div className="intelligence-ranking-table">
+        <Table headers={["Currency pair","Latest quote","Daily move",horizon+"-observation move","Annualised volatility","Reading"]} rows={momentumRows.map(row=>[
+          row.pair,row.latest?.value.toFixed(4)||"—",formatMove(row.dailyMove),formatMove(row.momentum),row.volatility===null?"—":pct(row.volatility,2),row.reading
+        ])}/>
+      </div>
+      <p className="panel-note">Movement and volatility are descriptive statistics calculated from stored CBK observations. The reading is not a buy/sell signal or a forecast.</p>
     </Panel>
-    <div className="dashboard-grid">
-      <Panel title="Daily percentage move" note="Comparable change across the three tracked currency pairs">
-        <ChartFrame><ResponsiveContainer><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="pair" tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ReferenceLine y={0} stroke="#9aa6b2"/><ChartTooltip/><Bar dataKey="change" name="Daily move" fill="#356bb3" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></ChartFrame>
+
+    <div className="dashboard-grid intelligence-chart-grid">
+      <Panel title={horizon+"-observation relative movement"} note="Positive bars mean more KES are required per foreign-currency unit">
+        {chartRows.length?<ChartFrame height={270} className="intelligence-momentum-chart"><ResponsiveContainer><BarChart data={chartRows} margin={{top:12,right:10,bottom:6,left:4}}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+          <XAxis dataKey="pair" tick={{fontSize:10,fill:"#8291a0"}}/>
+          <YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%" width={52}/>
+          <ReferenceLine y={0} stroke="#9aa6b2"/>
+          <ChartTooltip formatter={(value)=>pct(Number(value)/100,3)} labelFormatter={label=>"Currency pair: "+String(label)}/>
+          <Bar dataKey="move" name="Quote movement" radius={[4,4,0,0]}>{chartRows.map(row=><Cell key={row.pair} fill={row.move>=0?"#d5a43b":"#087f8c"}/>)}</Bar>
+        </BarChart></ResponsiveContainer></ChartFrame>:<NoData message="No currency pair has enough observations for the selected comparison window."/>}
       </Panel>
-      <Panel title="Volatility comparison" note="Annualised standard deviation of observed daily returns">
-        <ChartFrame><ResponsiveContainer><BarChart data={chart} layout="vertical"><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e7edf2"/><XAxis type="number" tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><YAxis dataKey="pair" type="category" tick={{fontSize:10,fill:"#8291a0"}} width={65}/><ChartTooltip/><Bar dataKey="volatility" name="Annualised volatility" fill="#087f8c" radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></ChartFrame>
+
+      <Panel title="Return and risk positioning" note="Each point is one currency pair; compare momentum with annualised volatility">
+        {chartCorrelation.length?<ChartFrame height={270} className="intelligence-scatter-chart"><ResponsiveContainer><ScatterChart margin={{top:12,right:18,bottom:8,left:8}}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e7edf2"/>
+          <XAxis type="number" dataKey="x" name="Annualised volatility" unit="%" tick={{fontSize:9,fill:"#8291a0"}}/>
+          <YAxis type="number" dataKey="y" name="Momentum" unit="%" tick={{fontSize:9,fill:"#8291a0"}}/>
+          <ReferenceLine x={mean(chartCorrelation.map(row=>row.x))} stroke="#9aa6b2" strokeDasharray="3 3"/>
+          <ReferenceLine y={0} stroke="#9aa6b2"/>
+          <Tooltip cursor={{strokeDasharray:"3 3"}} formatter={(value,name)=>[Number(value).toFixed(2)+"%",String(name)]} labelFormatter={(_,payload)=>payload?.[0]?.payload?.pair||"Pair"}/>
+          <Scatter name="Currency pairs" data={chartCorrelation} fill="#356bb3"/>
+        </ScatterChart></ResponsiveContainer></ChartFrame>:<NoData message="Volatility and momentum positioning will appear once sufficient observations are available."/>}
       </Panel>
     </div>
+
+    <Panel title="Daily-return correlation" note="Pearson correlation calculated only on dates observed for both currency pairs">
+      <div className="correlation-legend"><span><i className="corr-dot high"/> Strong positive</span><span><i className="corr-dot mid"/> Moderate positive</span><span><i className="corr-dot negative"/> Strong negative</span><span><i className="corr-dot low"/> Weak / mixed</span></div>
+      <div className="correlation-matrix-wrap"><table className="correlation-matrix">
+        <thead><tr><th>Pair</th>{PAIRS.map(pair=><th key={pair}>{pair}</th>)}</tr></thead>
+        <tbody>{PAIRS.map((pair,i)=><tr key={pair}><th>{pair}</th>{PAIRS.map((other,j)=>{
+          const cell=correlationRows[i][j];
+          return <td key={other}><div className={"correlation-cell "+correlationClass(cell.value)}>{cell.value===null?"—":cell.value.toFixed(2)}</div><small>{cell.count} dates</small></td>;
+        })}</tr>)}</tbody>
+      </table></div>
+      <p className="panel-note">A positive correlation means the two KES exchange-rate quotes tended to move in the same direction on shared observation dates. Correlation is not causation and does not by itself imply diversification benefit.</p>
+    </Panel>
   </div>;
 }
-
 function YieldCurve({data}:{data:MarketPayload}){
   const dates=[...new Set(data.bills.map(row=>row.date))].sort();
   const latestDate=dates.at(-1)||"";
