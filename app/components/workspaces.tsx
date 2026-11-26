@@ -444,17 +444,17 @@ function PortfolioIntelligence({data}:{data:MarketPayload}){
   ];
   const valid=positions.every(row=>Number.isFinite(row.value)&&row.value>=0&&Number.isFinite(row.expected)&&Number.isFinite(row.volatility)&&row.volatility>=0)&&Number.isFinite(Number(bondReturn))&&Number.isFinite(Number(bondVol))&&Number.isFinite(Number(cashReturn))&&Number.isFinite(Number(cashVol));
   const active=positions.filter(row=>row.value>0);
-  const total=active.reduce((sum,row)=>sum+row.value,0);
-  const alloc=active.map(row=>({...row,weight:total?row.value/total:0,annualPnl:row.value*row.expected}));
-  const expectedPnl=alloc.reduce((sum,row)=>sum+row.annualPnl,0);
-  const expectedReturn=total?expectedPnl/total:0;
-  const variance=alloc.reduce((sum,row)=>sum+row.weight**2*row.volatility**2,0);
-  const portfolioVolatility=Math.sqrt(variance);
-  const var95=1.64485*portfolioVolatility*total/Math.sqrt(252);
+  const engine=active.length?portfolioMetrics(active.map(row=>({name:row.name,value:row.value,expected_return:row.expected,volatility:row.volatility}))):null;
+  const total=engine?.total_value||0;
+  const alloc=active.map((row,i)=>({...row,weight:engine?.allocation[i].weight||0,annualPnl:row.value*row.expected}));
+  const expectedPnl=engine?.expected_annual_pnl||0;
+  const expectedReturn=engine?.expected_return||0;
+  const portfolioVolatility=engine?.volatility||0;
+  const var95=engine?.parametric_var_95||0;
   const var99=2.32635*portfolioVolatility*total/Math.sqrt(252);
   const largest=alloc.reduce((best,row)=>!best||row.weight>best.weight?row:best,null as typeof alloc[number]|null);
-  const hhi=alloc.reduce((sum,row)=>sum+row.weight**2,0);
-  const diversification=Math.max(0,Math.min(1,1-hhi));
+  const hhi=engine?.concentration_hhi||0;
+  const diversification=engine?.diversification_score||0;
   const tbillValue=alloc.filter(row=>row.isTbill).reduce((sum,row)=>sum+row.value,0);
   const tbillWeight=total?tbillValue/total:0;
   const chart=alloc.map(row=>({asset:row.name,value:row.weight*100}));
@@ -627,10 +627,12 @@ function Backtesting({data}:{data:MarketPayload}){
   const points=[];
   let equity=1,benchmark=1,position=0,trades=0,peak=1,worst=0;
   for(let i=1;valid&&i<values.length;i++){
+    const ready=isFx?i>=l:i>s;
+    if(!ready)continue;
     let signal=0;
     if(isFx){
-      if(i>=l&&mean(values.slice(i-s,i))>mean(values.slice(i-l,i)))signal=1;
-    }else if(i>s&&values[i-1]>mean(values.slice(i-s-1,i-1))){
+      if(mean(values.slice(i-s,i))>mean(values.slice(i-l,i)))signal=1;
+    }else if(values[i-1]>mean(values.slice(i-s-1,i-1))){
       signal=1;
     }
     const changed=signal!==position;
@@ -638,7 +640,7 @@ function Backtesting({data}:{data:MarketPayload}){
     const baseReturn=isFx
       ? (values[i-1]===0?0:values[i]/values[i-1]-1)
       : -rateDuration*(values[i]-values[i-1]);
-    const strategyReturn=position?baseReturn-(changed?cost:0):0;
+    const strategyReturn=(position?baseReturn:0)-(changed?cost:0);
     equity*=1+strategyReturn;benchmark*=1+baseReturn;peak=Math.max(peak,equity);worst=Math.min(worst,equity/peak-1);
     points.push({date:dates[i],strategy:equity,benchmark});
   }
