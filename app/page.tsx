@@ -50,7 +50,7 @@ export default function Home(){
     localStorage.setItem("kfa-cookie-choice","essential-only");
     setCookie(false);
   };
-  const lastRefresh=data?.health?.last_refresh?.completed_at;
+  
   const status=loading&&!data?"CONNECTING":data?.health?.database_connected?"NEON DATABASE":"DATABASE OFFLINE";
 
   return <div className={dark?"app-shell dark":"app-shell"}>
@@ -104,10 +104,7 @@ export default function Home(){
             <h1 className="page-title">{active==="Dashboard"?"Market overview":active}</h1>
             <p className="sub-title">{MODULES.find(item=>item.name===active)?.desc}</p>
           </div>
-          <div className="date-note">
-            <span>Last successful import</span>
-            <strong>{lastRefresh?new Date(lastRefresh).toLocaleString("en-KE"):"Not yet recorded"}</strong>
-          </div>
+          <div className="date-note"><span>Latest stored CBK observations</span><strong>FX · {data?.health?.latest_fx_observation||"—"}</strong><strong>Treasury bills · {data?.health?.latest_bill_observation||"—"}</strong></div>
         </div>
 
         {error&&<div className="service-warning"><strong>Data connection needs attention.</strong><span>{error}</span><button className="text-action" onClick={()=>void refreshData()}>Try again</button></div>}
@@ -128,7 +125,7 @@ export default function Home(){
     {menu&&<button className="mobile-overlay" onClick={()=>setMenu(false)} aria-label="Close navigation overlay"/>}
     {cookie&&<div className="cookie-banner">
       <div><strong style={{fontSize:12}}>Cookie and browser storage notice</strong><p>Essential browser storage remembers your display preference and cookie choice. Optional analytics and advertising trackers are not enabled. Read our <a href="/cookies">cookie notice</a>.</p></div>
-      <div className="cookie-actions"><button className="secondary" onClick={consent}>Essential only</button><button onClick={consent}>Continue</button></div>
+      <div className="cookie-actions"><button onClick={consent}>Got it</button></div>
     </div>}
   </div>;
 }
