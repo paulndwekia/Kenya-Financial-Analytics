@@ -183,6 +183,7 @@ def build_workbook(fx, bills, refresh):
     # Executive Summary
     summary = workbook.add_worksheet("Executive Summary")
     summary.hide_gridlines(2)
+    summary.set_tab_color(TEAL)
     summary.set_zoom(90)
     summary.set_column("A:A", 15)
     summary.set_column("B:B", 14)
@@ -197,7 +198,7 @@ def build_workbook(fx, bills, refresh):
     summary.set_row(0, 28)
     summary.set_row(1, 16)
     summary.merge_range("A1:H1", "KENYA FINANCIAL ANALYTICS", fmt["title"])
-    summary.merge_range("A2:H2", "KENYAN MARKETS  /  QUANTITATIVE RESEARCH  /  CBK SOURCE DATA", fmt["subtitle"])
+    summary.merge_range("A2:H2", "MARKET RESEARCH REPORT  /  KENYAN MARKETS  /  CBK SOURCE DATA", fmt["subtitle"])
     summary.merge_range("A3:H3", "Market report generated " + retrieved_at.strftime("%d %B %Y, %H:%M UTC"), fmt["small"])
 
     def kpi(label, value, note, first_col, last_col, number_format=None):
@@ -355,6 +356,7 @@ def build_workbook(fx, bills, refresh):
     # Source-level FX history
     fx_sheet = workbook.add_worksheet("FX History")
     fx_sheet.hide_gridlines(2)
+    fx_sheet.set_tab_color(BLUE)
     fx_sheet.freeze_panes(1, 0)
     fx_sheet.set_zoom(90)
     fx_sheet.set_column("A:A", 15)
@@ -403,6 +405,7 @@ def build_workbook(fx, bills, refresh):
     # Treasury bill auction history
     bill_sheet = workbook.add_worksheet("Treasury Bills")
     bill_sheet.hide_gridlines(2)
+    bill_sheet.set_tab_color(GOLD)
     bill_sheet.freeze_panes(1, 0)
     bill_sheet.set_zoom(90)
     bill_widths = [15, 12, 18, 18, 17, 22, 22, 28, 55]
@@ -447,6 +450,7 @@ def build_workbook(fx, bills, refresh):
     # Methodology and limitations
     method = workbook.add_worksheet("Methodology")
     method.hide_gridlines(2)
+    method.set_tab_color(MUTED)
     method.set_column("A:A", 29)
     method.set_column("B:B", 100)
     method.set_row(0, 28)
