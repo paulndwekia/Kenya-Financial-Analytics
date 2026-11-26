@@ -204,7 +204,7 @@ function TreasuryBills({data}:{data:MarketPayload}){
 function BondPricing(){
   const [face,setFace]=useState("100000"),[coupon,setCoupon]=useState("12"),[ytm,setYtm]=useState("13"),[years,setYears]=useState("5"),[frequency,setFrequency]=useState("2");
   const f=Number(face),c=Number(coupon)/100,y=Number(ytm)/100,n=Math.max(1,Number(frequency)),t=Number(years);
-  const valid=f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n);
+  const valid=[f,c,y,t,n].every(Number.isFinite)&&f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n);
   const periods=Math.max(1,Math.round(t*n)),periodic=y/n,cashCoupon=f*c/n;
   const flows=Array.from({length:periods},(_,i)=>({period:i+1,time:(i+1)/n,cash:cashCoupon+(i===periods-1?f:0),pv:(cashCoupon+(i===periods-1?f:0))/Math.pow(1+periodic,i+1)}));
   const price=valid?flows.reduce((s,x)=>s+x.pv,0):0;
@@ -233,7 +233,7 @@ function normalCdf(x:number){
 function OptionsGreeks(){
   const [spot,setSpot]=useState("100"),[strike,setStrike]=useState("100"),[maturity,setMaturity]=useState("1"),[riskFree,setRiskFree]=useState("13"),[volatility,setVolatility]=useState("20"),[kind,setKind]=useState("Call");
   const S=Number(spot),K=Number(strike),T=Number(maturity),r=Number(riskFree)/100,sigma=Number(volatility)/100;
-  const valid=S>0&&K>0&&T>0&&sigma>0&&r>-1;
+  const valid=[S,K,T,sigma,r].every(Number.isFinite)&&S>0&&K>0&&T>0&&sigma>0&&r>-1;
   const d1=valid?(Math.log(S/K)+(r+sigma*sigma/2)*T)/(sigma*Math.sqrt(T)):0,d2=d1-sigma*Math.sqrt(Math.max(T,0));
   const disc=Math.exp(-r*T),pdf=normalPdf(d1);
   const price=valid?(kind==="Call"?S*normalCdf(d1)-K*disc*normalCdf(d2):K*disc*normalCdf(-d2)-S*normalCdf(-d1)):0;
@@ -259,15 +259,19 @@ function RiskAnalysis({data}:{data:MarketPayload}){
   const varAmount=Math.max(0,-tail*Number(capital));
   const tailReturns=rets.filter(x=>x<=tail),es=Math.max(0,-mean(tailReturns)*Number(capital));
   const volatility=stdev(rets)*Math.sqrt(252);
-  const bins=Array.from({length:12},(_,i)=>({label:(i-6).toString(),count:0}));
-  const lower=Math.min(...rets),upper=Math.max(...rets),width=upper>lower?(upper-lower)/bins.length:1;
+  const lower=rets.length?Math.min(...rets):0,upper=rets.length?Math.max(...rets):0;
+  const width=upper>lower?(upper-lower)/12:Math.max(Math.abs(lower)*0.1,0.000001);
+  const bins=Array.from({length:12},(_,i)=>{
+    const start=lower+i*width,end=i===11?upper:lower+(i+1)*width;
+    return {label:(start*100).toFixed(2)+"% to "+(end*100).toFixed(2)+"%",count:0};
+  });
   for(const value of rets){const idx=Math.max(0,Math.min(bins.length-1,Math.floor((value-lower)/width)));bins[idx].count++;}
   return <div className="workspace-stack">
     <Panel title="Historical FX risk" note="Loss estimates are based on the selected pair's observed daily percentage changes">
       <div className="control-row"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label><Field label="Exposure value (KES)" value={capital} onChange={setCapital} min="1"/><label className="field"><span>Confidence level</span><select className="search" value={confidence} onChange={e=>setConfidence(e.target.value)}><option value="90">90%</option><option value="95">95%</option><option value="99">99%</option></select></label></div>
       <div className="metric-grid"><Metric label={"Historical VaR · "+confidence+"%"} value={rets.length?money(varAmount):"—"} note="Empirical lower-tail loss estimate"/><Metric label="Expected shortfall" value={rets.length?money(es):"—"} note="Average loss in the selected tail"/><Metric label="Annualised volatility" value={rets.length?pct(volatility):"—"} note="Sample daily return volatility × √252"/><Metric label="Maximum drawdown" value={values.length?pct(maxDrawdown(values)):"—"} note="Observed peak-to-trough decline"/></div>
     </Panel>
-    <Panel title="Daily return distribution" note={"Observed returns for "+pair+"; the histogram is descriptive, not a probability forecast"}>
+    <Panel title="Daily return distribution" note={"Observed returns for "+pair+"; labels show actual sample-return intervals"}>
       {rets.length>=2?<ChartFrame height={280}><ResponsiveContainer><BarChart data={bins}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="label" tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Bar dataKey="count" name="Observations" fill="#c18a35" radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></ChartFrame>:<NoData message="At least three valid prices are needed to estimate historical returns."/>}
       <p className="panel-note">VaR and expected shortfall use the empirical return sample. They do not guarantee a maximum loss; currency series are market proxies and not a diversified portfolio return history.</p>
     </Panel>
@@ -351,7 +355,7 @@ function Portfolio({data}:{data:MarketPayload}){
   const totalReturn=cumulative.length?cumulative.at(-1)!-1:0;
   const annualVol=stdev(daily)*Math.sqrt(252);
   const initial=Number(amount),ending=initial*(1+totalReturn);
-  const valid=initial>0&&perPair.every(row=>row.weight>=0)&&Math.abs(weightSum-100)<.0001;
+  const valid=Number.isFinite(initial)&&initial>0&&perPair.every(row=>Number.isFinite(row.weight)&&row.weight>=0)&&Number.isFinite(weightSum)&&Math.abs(weightSum-100)<.0001;
   return <div className="workspace-stack">
     <Panel title="Currency exposure basket" note="Illustrative weighted basket based on aligned CBK daily FX returns; it is not a brokerage portfolio">
       <div className="metric-grid"><Field label="Starting reference value (KES)" value={amount} onChange={setAmount} min="1"/>{perPair.map(row=><Field key={row.pair} label={row.pair+" weight (%)"} value={weights[row.pair as keyof typeof weights]} onChange={v=>setWeights(prev=>({...prev,[row.pair]:v}))} min="0" max="100"/>)}</div>
@@ -443,7 +447,7 @@ function Backtesting({data}:{data:MarketPayload}){
 function StressTesting(){
   const [capital,setCapital]=useState("1000000"),[fxShock,setFxShock]=useState("-10"),[face,setFace]=useState("1000000"),[duration,setDuration]=useState("4"),[convexity,setConvexity]=useState("22"),[bps,setBps]=useState("100");
   const value=Number(capital),shock=Number(fxShock)/100,faceValue=Number(face),mod=Number(duration),conv=Number(convexity),dy=Number(bps)/10000;
-  const valid=value>0&&shock>-1&&shock<=5&&Number.isFinite(shock)&&faceValue>0&&mod>=0&&mod<=100&&conv>=0&&conv<=10000&&Math.abs(Number(bps))<=5000&&(-mod*dy+.5*conv*dy*dy)>-1;
+  const valid=[value,shock,faceValue,mod,conv,dy].every(Number.isFinite)&&value>0&&shock>-1&&shock<=5&&faceValue>0&&mod>=0&&mod<=100&&conv>=0&&conv<=10000&&Math.abs(Number(bps))<=5000&&(-mod*dy+.5*conv*dy*dy)>-1;
   const stressedFx=value*(1+shock);
   const bondMove=-mod*dy+.5*conv*dy*dy,bondPrice=faceValue*(1+bondMove);
   const scenarios=[-30,-20,-15,-10,-5,0,5,10,15,20].map(x=>({shock:x,value:value*(1+x/100),pnl:value*x/100}));
