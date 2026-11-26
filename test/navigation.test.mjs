@@ -72,7 +72,9 @@ test("chart views use separate modules for separate analytical tasks", () => {
   assert.match(options, /Option value versus underlying price/);
   assert.match(options, /Delta and gamma by underlying price/);
   assert.match(risk, /Daily return distribution/);
-  assert.match(explorer, /Filtered FX history/);
+  assert.match(explorer, /Exchange-rate history/);
+  assert.match(explorer, /Observation records/);
+  assert.match(explorer, /explorer-mobile-tabs/);
   assert.match(stress, /Combined CBK rate-shock impact/);
   assert.match(stress, /Portfolio-value shock curve/);
 });
