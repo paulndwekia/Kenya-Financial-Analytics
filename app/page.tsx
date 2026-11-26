@@ -41,9 +41,23 @@ export default function Home(){
     return()=>window.clearInterval(interval);
   },[refreshData]);
 
+  useEffect(()=>{
+    const syncFromAddress=()=>{
+      const requested=new URLSearchParams(window.location.search).get("module");
+      setActive(MODULES.some(item=>item.name===requested)?requested||"Dashboard":"Dashboard");
+    };
+    syncFromAddress();
+    window.addEventListener("popstate",syncFromAddress);
+    return()=>window.removeEventListener("popstate",syncFromAddress);
+  },[]);
+
   const choose=(name:string)=>{
     setActive(name);
     setMenu(false);
+    const address=new URL(window.location.href);
+    if(name==="Dashboard")address.searchParams.delete("module");
+    else address.searchParams.set("module",name);
+    window.history.pushState({module:name},"",address.pathname+address.search+address.hash);
     window.scrollTo({top:0,behavior:"smooth"});
   };
   const consent=()=>{
@@ -51,7 +65,7 @@ export default function Home(){
     setCookie(false);
   };
   
-  const status=loading&&!data?"CONNECTING":data?.health?.database_connected?"NEON DATABASE":"DATABASE OFFLINE";
+  const status=loading&&!data?"CONNECTING":error?"DATA CONNECTION ISSUE":data?.health?.database_connected?"NEON DATABASE":"DATABASE OFFLINE";
 
   return <div className={dark?"app-shell dark":"app-shell"}>
     <aside className={menu?"sidebar open":"sidebar"}>
@@ -65,7 +79,7 @@ export default function Home(){
         <div className="nav-list">
           {MODULES.filter(item=>item.group===group).map(item=>{
             const Icon=item.icon;
-            return <button key={item.name} onClick={()=>choose(item.name)} className={active===item.name?"nav-item active":"nav-item"}>
+            return <button key={item.name} onClick={()=>choose(item.name)} className={active===item.name?"nav-item active":"nav-item"} aria-current={active===item.name?"page":undefined}>
               <Icon size={15} strokeWidth={1.8}/><span>{item.name}</span>
             </button>;
           })}
@@ -85,7 +99,7 @@ export default function Home(){
           <span className="crumb">Research terminal <ChevronRight size={12} style={{verticalAlign:"middle"}}/> {active}</span>
         </div>
         <div className="top-actions">
-          <span className={data?.health?.database_connected?"status-pill":"status-pill status-warning"}>
+          <span className={data?.health?.database_connected&&!error?"status-pill":"status-pill status-warning"}>
             <i className="status-dot"/>{status}
           </span>
           <button className="theme-button" onClick={()=>setDark(value=>{const next=!value;localStorage.setItem("kfa-theme",next?"dark":"light");return next;})} aria-label="Toggle colour theme" title="Toggle colour theme">
@@ -110,7 +124,7 @@ export default function Home(){
         {error&&<div className="service-warning"><strong>Data connection needs attention.</strong><span>{error}</span><button className="text-action" onClick={()=>void refreshData()}>Try again</button></div>}
 
         <AnimatePresence mode="wait">
-          <motion.div key={active} initial={{opacity:0,y:5}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-4}} transition={{duration:.2}}>
+          <motion.div key={active} initial={false} animate={{opacity:1,y:0}} exit={{opacity:0,y:-4}} transition={{duration:.2}}>
             <ModuleWorkspace name={active} data={data} loading={loading} error={error}/>
           </motion.div>
         </AnimatePresence>
