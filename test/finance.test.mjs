@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   treasuryBillPrice,treasuryBillDiscountPrice,treasuryBillYield,treasuryBillDiscountRate,
-  bondPrice,bondYtm,bondMetrics,rateDecimal,blackScholes,historicalVaR,parametricVaR,expectedShortfall,
+  bondCashFlows,bondPrice,bondYtm,bondMetrics,rateDecimal,blackScholes,historicalVaR,parametricVaR,expectedShortfall,
   classifyYieldCurve,yieldCurveSlopes,interpolateYield,simpleForwardRate,portfolioMetrics,bondPriceShock,
   treasuryBillReinvestmentShock,cbkRateScenarios
 } from "../lib/finance.mjs";
@@ -20,6 +20,15 @@ test("Treasury bill discount and investment yield are distinct conventions",()=>
 });
 test("Kenyan Treasury bill tenor validation rejects unsupported maturities",()=>{
   assert.throws(()=>treasuryBillReinvestmentShock(1e5,.09,.005,120),/tenor/i);
+});
+test("Bond cash-flow schedule preserves exact maturity and principal redemption",()=>{
+  const flows=bondCashFlows(100000,.12,2.5,2);
+  assert.equal(flows.length,5);
+  assert.equal(flows.at(-1).time,2.5);
+  assert.equal(flows[0].cash_flow,6000);
+  assert.equal(flows.at(-1).cash_flow,106000);
+  assert.throws(()=>bondCashFlows(100000,.12,2.3,2),/exact multiple/i);
+  assert.throws(()=>bondCashFlows(100000,.12,2.3,4),/exact multiple/i);
 });
 test("Bond price is at par when coupon and yield are equal",()=>{
   assert.ok(Math.abs(bondPrice(100000,.1,.1,5,2)-100000)<1e-7);
