@@ -279,24 +279,47 @@ function RiskAnalysis({data}:{data:MarketPayload}){
 }
 
 function RiskIntelligence({data}:{data:MarketPayload}){
-  const [selected,setSelected]=useState<number[]>([91,182,364]);
-  const summaries=selected.map(tenor=>{
-    const rows=data.bills.filter(x=>x.tenor_days===tenor).sort((a,b)=>a.date.localeCompare(b.date));
-    const values=rows.map(x=>x.rate),vol=stdev(values),avg=mean(values),relative=avg?vol/avg:0;
-    const movement=values.length>1?values.at(-1)!-values[0]:0;
-    const risk=relative>=.2?"Higher dispersion":relative>=.1?"Moderate dispersion":"Lower dispersion";
-    return {tenor,rows,values,vol,avg,movement,risk,latest:values.at(-1)};
-  });
-  const toggle=(tenor:number)=>setSelected(items=>items.includes(tenor)?items.filter(x=>x!==tenor):[...items,tenor]);
+  const summaries=PAIRS.map(pair=>{
+    const {rows,values,rets}=seriesFor(data.fx,pair);
+    const latest=values.at(-1),previous=values.at(-2);
+    const daily=latest!==undefined&&previous!==undefined&&previous!==0?latest/previous-1:null;
+    return {
+      pair,
+      rows,
+      latest,
+      daily,
+      volatility:stdev(rets)*Math.sqrt(252),
+      drawdown:maxDrawdown(values),
+      observations:rets.length,
+      latestDate:rows.at(-1)?.date||"—",
+    };
+  }).filter(x=>x.observations>0);
+  const highestVol=summaries.reduce((best,row)=>!best||row.volatility>best.volatility?row:best,null as typeof summaries[number]|null);
+  const deepestDrawdown=summaries.reduce((best,row)=>!best||row.drawdown<best.drawdown?row:best,null as typeof summaries[number]|null);
+  const chart=summaries.map(row=>({pair:row.pair,volatility:row.volatility*100,drawdown:Math.abs(row.drawdown)*100}));
   return <div className="workspace-stack">
-    <Panel title="Treasury yield risk overview" note="This module measures variation in auction yields, not FX risk or portfolio VaR">
-      <div className="control-row">{TENORS.map(tenor=><label key={tenor} className="check-option"><input type="checkbox" checked={selected.includes(tenor)} onChange={()=>toggle(tenor)}/>{tenor}-day</label>)}</div>
-      <div className="metric-grid"><Metric label="Records selected" value={summaries.reduce((s,x)=>s+x.rows.length,0).toString()}/><Metric label="Tenors compared" value={summaries.length.toString()}/><Metric label="First auction date" value={data.bills.map(x=>x.date).sort()[0]||"—"}/><Metric label="Latest auction date" value={data.bills.map(x=>x.date).sort().at(-1)||"—"}/></div>
-      {summaries.length?<Table headers={["Tenor","Latest yield","Average","High","Low","Std deviation","Total movement","Relative dispersion"]} rows={summaries.map(x=>[x.tenor+" days",x.latest===undefined?"—":pct(x.latest,4),pct(x.avg,4),x.values.length?pct(Math.max(...x.values),4):"—",x.values.length?pct(Math.min(...x.values),4):"—",pct(x.vol,4),pp(x.movement,4),x.risk])}/>:<NoData message="Select at least one tenor."/>}
+    <Panel title="FX risk comparison" note="Annualised realised volatility and peak-to-trough movement across the CBK currency series">
+      <div className="metric-grid">
+        <Metric label="Pairs with usable history" value={String(summaries.length)} note="USD, GBP and EUR against KES"/>
+        <Metric label="Highest realised volatility" value={highestVol?highestVol.pair:"—"} note={highestVol?pct(highestVol.volatility):"Insufficient history"}/>
+        <Metric label="Largest observed drawdown" value={deepestDrawdown?deepestDrawdown.pair:"—"} note={deepestDrawdown?pct(deepestDrawdown.drawdown):"Insufficient history"}/>
+        <Metric label="Latest FX observation" value={summaries.map(row=>row.latestDate).sort().at(-1)||"—"} note="Date supplied by CBK"/>
+      </div>
+      <Table headers={["Pair","Observations","Latest rate","Daily move","Annualised volatility","Maximum drawdown","Latest date"]} rows={summaries.map(row=>[
+        row.pair,row.observations,row.latest?.toFixed(4)||"—",row.daily===null?"—":pct(row.daily,3),pct(row.volatility,2),pct(row.drawdown),row.latestDate
+      ])}/>
     </Panel>
-    {summaries.map(x=><Panel key={x.tenor} title={x.tenor+"-day interpretation"} note={x.rows.length+" auction observations"}>
-      <p style={{fontSize:12,lineHeight:1.7,color:"var(--muted)",margin:0}}>The recorded yield has {x.movement>0.0005?"risen":x.movement<-.0005?"fallen":"remained broadly stable"} by {pp(x.movement,4)} between the first and latest available auction. Sample standard deviation is {pct(x.vol,4)}; dispersion relative to the average yield is {pct(x.avg?x.vol/x.avg:0,2)} ({x.risk.toLowerCase()}). These readings describe the stored sample and are not a rating of credit risk.</p>
-    </Panel>)}
+    <div className="dashboard-grid">
+      <Panel title="Realised volatility ranking" note="Sample standard deviation of daily returns multiplied by √252">
+        <ChartFrame height={260}><ResponsiveContainer><BarChart data={chart} layout="vertical"><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e7edf2"/><XAxis type="number" tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><YAxis dataKey="pair" type="category" tick={{fontSize:10,fill:"#8291a0"}} width={65}/><ChartTooltip/><Bar dataKey="volatility" name="Annualised volatility" fill="#c18a35" radius={[0,4,4,0]}/></BarChart></ResponsiveContainer></ChartFrame>
+      </Panel>
+      <Panel title="Peak-to-trough comparison" note="Maximum historical drawdown in the stored KES-per-currency rate series">
+        <ChartFrame height={260}><ResponsiveContainer><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="pair" tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Bar dataKey="drawdown" name="Drawdown magnitude" fill="#356bb3" radius={[4,4,0,0]}/></BarChart></ResponsiveContainer></ChartFrame>
+      </Panel>
+    </div>
+    <Panel title="How to read this monitor" note="Risk indicators are historical descriptions">
+      <p style={{fontSize:12,lineHeight:1.7,color:"var(--muted)",margin:0}}>The pair with the highest observed volatility had the widest variation in daily percentage changes over its available sample. Maximum drawdown measures the largest decline from a previous peak in the quoted KES-per-currency rate. These measures do not capture position size, leverage, hedging, transaction costs or future market conditions. Use the selected-pair VaR analysis in Risk Analysis for an exposure-specific loss estimate.</p>
+    </Panel>
   </div>;
 }
 
