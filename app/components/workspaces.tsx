@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
-  treasuryBillPrice, bondCashFlows, bondPrice, bondYtm, bondMetrics,
+  treasuryBillPrice, treasuryBillDiscountPrice, treasuryBillYield, treasuryBillDiscountRate, bondCashFlows, bondPrice, bondYtm, bondMetrics,
   bondPriceSensitivity, blackScholes, historicalVaR, parametricVaR,
   expectedShortfall, annualizedVolatility, sharpeRatio, sortinoRatio,
   yieldCurveSlopes, classifyYieldCurve, interpolateYield, simpleForwardRate,
@@ -458,24 +458,33 @@ function TreasuryBills({data}:{data:MarketPayload}){
   const [face,setFace]=useState("100000");
   const [yieldRate,setYieldRate]=useState("8.75");
   const [days,setDays]=useState("91");
+  const [convention,setConvention]=useState("investment");
   const rows=data.bills.filter(row=>row.tenor_days===Number(tenor)).sort((a,b)=>a.date.localeCompare(b.date));
   const rates=rows.map(row=>row.rate);
   const capital=Number(face),annualRate=Number(yieldRate)/100,term=Number(days);
-  const valid=[capital,annualRate,term].every(Number.isFinite)&&capital>0&&annualRate>=0&&term>=1&&term<=364;
-  const price=valid?treasuryBillPrice(capital,annualRate,term):0;
+  const valid=[capital,annualRate,term].every(Number.isFinite)&&capital>0&&annualRate>=0&&annualRate<=1&&term>=1&&term<=364;
+  const price=valid?(convention==="investment"
+    ?treasuryBillPrice(capital,annualRate,term)
+    :treasuryBillDiscountPrice(capital,annualRate,term)):0;
   const discount=valid?capital-price:0;
-  const investmentReturn=valid&&price>0?discount/price:0;
+  const investmentReturn=valid&&price>0?capital/price-1:0;
+  const holdingPeriodReturn=investmentReturn;
   const annualised=valid&&term>0?investmentReturn*365/term:0;
+  const impliedInvestmentYield=valid?treasuryBillYield(capital,price,term):0;
+  const impliedDiscountRate=valid?treasuryBillDiscountRate(capital,price,term):0;
   const chart=rows.map(row=>({date:row.date,yield:row.rate*100}));
   const latestDate=data.bills.reduce((latest,row)=>!latest||row.date>latest?row.date:latest,"");
   const latestAuction=data.bills.filter(row=>row.date===latestDate).sort((a,b)=>a.tenor_days-b.tenor_days);
   const comparisons=TENORS.map(days=>{
     const row=latestAuction.find(item=>item.tenor_days===days);
-    const purchase=row&&capital>0?treasuryBillPrice(capital,row.rate,days):null;
-    return {days,row,purchase,discount:purchase===null?null:capital-purchase};
+    const hasPublishedPrice=row?.price!==null&&row?.price!==undefined&&Number.isFinite(row.price)&&row.price>0;
+    const auctionPricePer100=row?(hasPublishedPrice?row.price!:treasuryBillPrice(100,row.rate,days)):null;
+    const purchase=auctionPricePer100===null||!Number.isFinite(capital)||capital<=0?null:capital*auctionPricePer100/100;
+    return {days,row,purchase,discount:purchase===null?null:capital-purchase,priceBasis:row?(hasPublishedPrice?"CBK published":"Investment-yield estimate"):"—"};
   });
+
   return <div className="workspace-stack treasury-workspace">
-    <Panel title="Auction history by tenor" note="Choose one Treasury bill maturity; published auction observations only">
+    <Panel title="Auction history by tenor" note="Follow one maturity through actual CBK auction observations">
       <div className="treasury-filter-row">
         <label className="field"><span>Bill maturity</span><select className="search" value={tenor} onChange={e=>setTenor(e.target.value)}>{TENORS.map(t=><option key={t} value={t}>{t}-day Treasury bill</option>)}</select></label>
       </div>
@@ -484,23 +493,35 @@ function TreasuryBills({data}:{data:MarketPayload}){
         <Metric label="Historical average" value={rates.length?pct(mean(rates),4):"—"} note={rows.length+" observations"}/>
         <Metric label="Observed range" value={rates.length?((Math.max(...rates)-Math.min(...rates))*100).toFixed(3)+" pp":"—"} note="High less low in stored history"/>
       </div>
-      {chart.length>=2?<ChartFrame height={270} className="treasury-chart"><ResponsiveContainer><LineChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><Tooltip formatter={(value)=>pct(Number(value)/100,4)} labelFormatter={label=>"Auction date: "+String(label)} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/><Line dataKey="yield" name="Accepted yield" stroke="#d5a43b" strokeWidth={2.2} dot={false}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="More than one auction observation is needed to draw a history for this tenor."/>}
-      <div className="treasury-history-table"><Table headers={["Auction date","Accepted yield","Issue number","Publisher"]} rows={[...rows].reverse().map(row=>[row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/></div>
+      {chart.length>=2?<ChartFrame height={270} className="treasury-chart"><ResponsiveContainer><LineChart data={chart} margin={{top:8,right:12,bottom:4,left:0}}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%" width={48}/><Tooltip formatter={(value)=>pct(Number(value)/100,4)} labelFormatter={label=>"Auction date: "+String(label)} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/><Line dataKey="yield" name="Accepted yield" stroke="#d5a43b" strokeWidth={2.2} dot={false} activeDot={{r:4}}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="More than one published auction observation is needed to draw a yield history for this tenor."/>}
+      <div className="treasury-history-table"><Table headers={["Auction date","Accepted yield","CBK price / 100","Issue number","Publisher"]} rows={[...rows].reverse().map(row=>[row.date,pct(row.rate,4),row.price===null||row.price===undefined?"—":Number(row.price).toFixed(4),row.issue_number||"—",row.source])}/></div>
     </Panel>
-    <Panel title="Treasury bill purchase-price calculator" note="Investment-yield convention from the retained pricing engine; 365-day basis">
-      <div className="metric-grid treasury-calculator-fields"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual investment yield (%)" value={yieldRate} onChange={setYieldRate} min="0" max="100"/><Field label="Days to maturity" value={days} onChange={setDays} min="1" max="364"/></div>
-      {valid?<div className="metric-grid"><Metric label="Estimated purchase price" value={money(price)}/><Metric label="Discount to face" value={money(discount)}/><Metric label="Holding-period return" value={pct(investmentReturn)}/><Metric label="Annualised return" value={pct(annualised)} note="Profit ÷ purchase price × 365 ÷ days"/></div>:<NoData message="Enter a positive face value, a non-negative annual yield and a remaining tenor from 1 to 364 days."/>}
-      <p className="panel-note">The calculator uses the investment-yield convention documented in the original Treasury Bill engine. The auction history above reports CBK market-weighted rates; enter the relevant rate and remaining days for a specific purchase-price estimate.</p>
+
+    <Panel title="Treasury bill purchase-price calculator" note="Choose the quote convention used by the rate you are entering">
+      <div className="treasury-calculator-controls">
+        <label className="field"><span>Pricing convention</span><select className="search" aria-label="Pricing convention" value={convention} onChange={event=>setConvention(event.target.value)}><option value="investment">Investment yield</option><option value="discount">Bank discount rate</option></select></label>
+        <Field label="Face value (KES)" value={face} onChange={setFace} min="1"/>
+        <Field label={convention==="investment"?"Annual investment yield (%)":"Annual bank discount rate (%)"} value={yieldRate} onChange={setYieldRate} min="0" max="100"/>
+        <Field label="Days to maturity" value={days} onChange={setDays} min="1" max="364"/>
+      </div>
+      {valid?<div className="treasury-result-grid">
+        <Metric label="Estimated purchase price" value={money(price)} note={"Price basis · "+(convention==="investment"?"Investment yield":"Bank discount")}/>
+        <Metric label="Discount to face" value={money(discount)}/>
+        <Metric label="Holding-period return" value={pct(holdingPeriodReturn)}/>
+        <Metric label="Implied investment yield" value={pct(impliedInvestmentYield)} note="Annualised on purchase price"/>
+        <Metric label="Equivalent discount rate" value={pct(impliedDiscountRate)} note="Annualised on face value"/>
+      </div>:<NoData message="Enter a positive face value, a quote rate from 0% to 100%, and a remaining tenor from 1 to 364 days."/>}
+      <p className="panel-note">Investment yield: price = face value ÷ (1 + yield × days ÷ 365). Bank discount: price = face value × (1 − discount rate × days ÷ 365). These conventions produce different prices from the same percentage; use the basis that applies to the quote you are entering.</p>
     </Panel>
-    <Panel title="Same-auction tenor comparison" note={"Illustrative purchase prices using KES "+(Number.isFinite(capital)?capital.toLocaleString("en-KE"):"—")+" face value and the latest matched CBK auction on "+(latestDate||"no available date")}>
-      <Table headers={["Tenor","Market-weighted yield","Estimated purchase price","Discount to face","Issue number"]} rows={comparisons.map(item=>[
-        item.days+" days",item.row?pct(item.row.rate,4):"—",item.purchase===null?"—":money(item.purchase),item.discount===null?"—":money(item.discount),item.row?.issue_number||"—"
+
+    <Panel title="Same-auction tenor comparison" note={"Actual CBK price used where published; otherwise estimated on an investment-yield basis · KES "+(Number.isFinite(capital)?capital.toLocaleString("en-KE"):"—")+" face value · "+(latestDate||"no auction date")}>
+      <Table headers={["Tenor","Market-weighted yield","Purchase price","Discount to face","Price basis","Issue number"]} rows={comparisons.map(item=>[
+        item.days+" days",item.row?pct(item.row.rate,4):"—",item.purchase===null?"—":money(item.purchase),item.discount===null?"—":money(item.discount),item.priceBasis,item.row?.issue_number||"—"
       ])}/>
-      <p className="panel-note">This comparison uses actual rates recorded on one auction date. It does not imply that all three maturities are currently open for subscription.</p>
+      <p className="panel-note">CBK published prices are quoted per KES 100 and scaled to the face value entered above. For historic records without a stored price, the estimate uses the investment-yield convention. This table does not imply that all tenors are currently open for subscription.</p>
     </Panel>
   </div>;
 }
-
 function BondPricing(){
   const [face,setFace]=useState("100000"),[coupon,setCoupon]=useState("12"),[ytm,setYtm]=useState("13"),[years,setYears]=useState("5"),[frequency,setFrequency]=useState("2");
   const [marketPrice,setMarketPrice]=useState("95000"),[shockBps,setShockBps]=useState("100");
