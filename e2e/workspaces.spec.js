@@ -147,6 +147,9 @@ test("portfolio intelligence and financial reports expose distinct comparisons a
   await expect(page.getByText("Concentration and CBK exposure")).toBeVisible();
   await expect(page.getByText("Historical CBK risk contribution")).toBeVisible();
   await expect(page.getByText("Expected annual P&L")).toBeVisible();
+  await page.getByLabel("91-day Treasury bill value (KES)").fill("500000");
+  await expect(page.getByText("Portfolio value")).toBeVisible();
+  await expect(page.locator(".metric-card").filter({hasText:"Portfolio value"})).toContainText("KES 1,200,000.00");
 
   await page.goto("/?module=Financial%20Reports");
   await expect(page.getByText("Market research report")).toBeVisible();
@@ -155,6 +158,10 @@ test("portfolio intelligence and financial reports expose distinct comparisons a
   await page.getByRole("button", { name: "Download report CSV" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("kenya-financial-analytics-report.csv");
+  const htmlPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download HTML report" }).click();
+  const htmlDownload = await htmlPromise;
+  expect(htmlDownload.suggestedFilename()).toBe("kenya-financial-analytics-report.html");
 });
 
 test("mobile navigation opens, selects a module and closes", async ({ page }) => {
