@@ -29,14 +29,14 @@ def rows_from(path, table, select_sql, where_sql, order_sql):
             price = "COALESCE(price, value)" if {"price", "value"}.issubset(cols) else ("price" if "price" in cols else ("value" if "value" in cols else "NULL"))
             source = "source" if "source" in cols else "'Central Bank of Kenya'"
             date_expr = f"COALESCE(NULLIF(trade_date,''), date)" if {"trade_date", "date"}.issubset(cols) else (date_col or "NULL")
-            sql = f"SELECT {date_expr} AS date, {instrument} AS instrument, {price} AS value, {source} AS source FROM {table} WHERE {instrument} IN ('USD/KES','GBP/KES','EUR/KES') AND {price} IS NOT NULL ORDER BY date ASC"
+            sql = f"SELECT DISTINCT {date_expr} AS date, {instrument} AS instrument, {price} AS value, {source} AS source FROM {table} WHERE {instrument} IN ('USD/KES','GBP/KES','EUR/KES') AND {price} IS NOT NULL ORDER BY date ASC"
         else:
             tenor = "tenor_days" if "tenor_days" in cols else "NULL"
             rate_parts = [c for c in ("accepted_rate", "rate", "value") if c in cols]
             rate = "COALESCE(" + ", ".join(rate_parts) + ")" if len(rate_parts) > 1 else (rate_parts[0] if rate_parts else "NULL")
             source = "source" if "source" in cols else "'Central Bank of Kenya'"
             date_expr = f"COALESCE(NULLIF(auction_date,''), date)" if {"auction_date", "date"}.issubset(cols) else (date_col or "NULL")
-            sql = f"SELECT {date_expr} AS date, {tenor} AS tenor_days, {rate} AS rate, {source} AS source FROM {table} WHERE {tenor} IN (91,182,364) AND {rate} IS NOT NULL ORDER BY date ASC, tenor_days ASC"
+            sql = f"SELECT DISTINCT {date_expr} AS date, {tenor} AS tenor_days, {rate} AS rate, {source} AS source FROM {table} WHERE {tenor} IN (91,182,364) AND {rate} IS NOT NULL ORDER BY date ASC, tenor_days ASC"
         return [dict(row) for row in con.execute(sql).fetchall()]
     finally:
         con.close()
@@ -48,22 +48,42 @@ def get_market_data():
     except Exception as exc:
         fx = []
         warnings.append("FX data store: " + str(exc)[:160])
+
+    app_bills = []
+    market_bills = []
     try:
-        bills = rows_from(APP_DB, "treasury_bills", None, None, None)
+        app_bills = rows_from(APP_DB, "treasury_bills", None, None, None)
     except Exception as exc:
-        bills = []
-        warnings.append("Treasury bill store: " + str(exc)[:160])
-    if not bills:
-        try:
-            bills = rows_from(MARKET_DB, "treasury_bill_rates", None, None, None)
-        except Exception as exc:
-            warnings.append("CBK market store: " + str(exc)[:160])
+        warnings.append("Treasury bill application store: " + str(exc)[:160])
+    try:
+        market_bills = rows_from(MARKET_DB, "treasury_bill_rates", None, None, None)
+    except Exception as exc:
+        warnings.append("CBK market history store: " + str(exc)[:160])
+
+    # Merge retained CBK bill stores and deduplicate by auction date and tenor.
+    unique_bills = {}
+    for item in app_bills + market_bills:
+        key = (str(item.get("date") or ""), int(item.get("tenor_days") or 0))
+        if key[0] and key[1] in (91, 182, 364):
+            unique_bills[key] = item
+    bills = sorted(unique_bills.values(), key=lambda item: (item["date"], int(item["tenor_days"])))
+
+    latest_fx_date = max((str(item.get("date") or "") for item in fx), default=None)
+    latest_bill_date = max((str(item.get("date") or "") for item in bills), default=None)
     return {
-        "ok": bool(fx or bills), "fx": fx, "bills": bills,
+        "ok": bool(fx or bills),
+        "fx": fx,
+        "bills": bills,
         "source": "Central Bank of Kenya",
         "retrieved_at": datetime.now(timezone.utc).isoformat(),
-        "health": {"fx_rows": len(fx), "bills_rows": len(bills),
-                   "database": "read-only bundled SQLite snapshot", "warnings": warnings}
+        "health": {
+            "fx_rows": len(fx),
+            "bills_rows": len(bills),
+            "latest_fx_observation": latest_fx_date,
+            "latest_bill_observation": latest_bill_date,
+            "database": "read-only bundled SQLite snapshot",
+            "warnings": warnings
+        }
     }
 
 class handler(BaseHTTPRequestHandler):
