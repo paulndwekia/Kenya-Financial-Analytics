@@ -4,6 +4,8 @@ A Kenyan quantitative-finance and market-intelligence research terminal for expl
 
 ## Application
 
+**Live application:** https://kenya-financial-analytics.vercel.app
+
 - **Framework:** Next.js and React
 - **Hosting:** Vercel
 - **Database:** Neon PostgreSQL
