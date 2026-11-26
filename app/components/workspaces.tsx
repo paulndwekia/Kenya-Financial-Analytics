@@ -63,8 +63,8 @@ const csvDownload=(name:string,headers:string[],rows:(string|number)[][])=>{
   const url=URL.createObjectURL(blob),link=document.createElement("a");
   link.href=url;link.download=name;link.click();URL.revokeObjectURL(url);
 };
-function Field({label,value,onChange,step="any",min}:{label:string;value:string;onChange:(value:string)=>void;step?:string;min?:string}){
-  return <label className="field"><span>{label}</span><input className="search" type="number" min={min} step={step} value={value} onChange={e=>onChange(e.target.value)}/></label>;
+function Field({label,value,onChange,step="any",min,max}:{label:string;value:string;onChange:(value:string)=>void;step?:string;min?:string;max?:string}){
+  return <label className="field"><span>{label}</span><input className="search" type="number" min={min} max={max} step={step} value={value} onChange={e=>onChange(e.target.value)}/></label>;
 }
 function Metric({label,value,note}:{label:string;value:string;note?:string}){
   return <motion.div className="metric-card" initial={false} animate={{opacity:1,y:0}} transition={{duration:.24}}>
@@ -204,9 +204,9 @@ function TreasuryBills({data}:{data:MarketPayload}){
 function BondPricing(){
   const [face,setFace]=useState("100000"),[coupon,setCoupon]=useState("12"),[ytm,setYtm]=useState("13"),[years,setYears]=useState("5"),[frequency,setFrequency]=useState("2");
   const f=Number(face),c=Number(coupon)/100,y=Number(ytm)/100,n=Math.max(1,Number(frequency)),t=Number(years);
-  const valid=f>0&&c>=0&&y>-1&&t>0&&[1,2,4].includes(n);
+  const valid=f>0&&c>=0&&y>-1&&t>0&&t<=100&&[1,2,4].includes(n);
   const periods=Math.max(1,Math.round(t*n)),periodic=y/n,cashCoupon=f*c/n;
-  const flows=Array.from({length:Math.min(periods,80)},(_,i)=>({period:i+1,time:(i+1)/n,cash:cashCoupon+(i===periods-1?f:0),pv:(cashCoupon+(i===periods-1?f:0))/Math.pow(1+periodic,i+1)}));
+  const flows=Array.from({length:periods},(_,i)=>({period:i+1,time:(i+1)/n,cash:cashCoupon+(i===periods-1?f:0),pv:(cashCoupon+(i===periods-1?f:0))/Math.pow(1+periodic,i+1)}));
   const price=valid?flows.reduce((s,x)=>s+x.pv,0):0;
   const macaulay=price?flows.reduce((s,x)=>s+x.time*x.pv,0)/price:0;
   const modified=macaulay/(1+periodic);
@@ -369,6 +369,7 @@ function Portfolio({data}:{data:MarketPayload}){
 function ResearchIntelligence({data}:{data:MarketPayload}){
   const [pair,setPair]=useState("USD/KES"),[short,setShort]=useState("20"),[long,setLong]=useState("60");
   const {rows,values}=seriesFor(data.fx,pair),s=Number(short),l=Number(long);
+  const valid=Number.isInteger(s)&&Number.isInteger(l)&&s>=2&&l>s&&l<=values.length;
   const chart=rows.map((row,i)=>{
     const sma=(window:number)=>i+1>=window?mean(values.slice(i-window+1,i+1)):null;
     return {date:row.date,rate:row.value,short:sma(s),long:sma(l)};
@@ -376,9 +377,9 @@ function ResearchIntelligence({data}:{data:MarketPayload}){
   const last=chart.at(-1),signal=last?.short!==null&&last?.short!==undefined&&last?.long!==null&&last?.long!==undefined?(last.short>last.long?"Short average above long average":"Short average below long average"):"Not enough observations";
   return <div className="workspace-stack">
     <Panel title="Moving-average research" note="Historical trend comparison; this module does not issue a trade instruction">
-      <div className="control-row"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(p=><option key={p}>{p}</option>)}</select></label><Field label="Short window" value={short} onChange={setShort} min="2"/><Field label="Long window" value={long} onChange={setLong} min="3"/></div>
+      <div className="control-row"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(p=><option key={p}>{p}</option>)}</select></label><Field label="Short window" value={short} onChange={setShort} min="2" max="1000" step="1"/><Field label="Long window" value={long} onChange={setLong} min="3" max="1000" step="1"/></div>
       <div className="metric-grid"><Metric label="Latest observed rate" value={last?.rate.toFixed(4)||"—"}/><Metric label={s+"-observation average"} value={last?.short?.toFixed(4)||"—"}/><Metric label={l+"-observation average"} value={last?.long?.toFixed(4)||"—"}/><Metric label="Relationship" value={signal}/></div>
-      {s>=2&&l>s&&chart.length>=l?<ChartFrame height={340}><ResponsiveContainer><ComposedChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis domain={["auto","auto"]} tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Line dataKey="rate" name="Observed rate" stroke="#9aa6b2" strokeWidth={1.5} dot={false}/><Line dataKey="short" name={"SMA "+s} stroke="#087f8c" strokeWidth={2} dot={false}/><Line dataKey="long" name={"SMA "+l} stroke="#d5a43b" strokeWidth={2} dot={false}/></ComposedChart></ResponsiveContainer></ChartFrame>:<NoData message="Choose a short window below the long window. The selected pair also needs at least as many observations as the long window."/>}
+      {valid&&chart.length>=l?<ChartFrame height={340}><ResponsiveContainer><ComposedChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis domain={["auto","auto"]} tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Line dataKey="rate" name="Observed rate" stroke="#9aa6b2" strokeWidth={1.5} dot={false}/><Line dataKey="short" name={"SMA "+s} stroke="#087f8c" strokeWidth={2} dot={false}/><Line dataKey="long" name={"SMA "+l} stroke="#d5a43b" strokeWidth={2} dot={false}/></ComposedChart></ResponsiveContainer></ChartFrame>:<NoData message="Choose a short window below the long window. The selected pair also needs at least as many observations as the long window."/>}
     </Panel>
     <Panel title="Research notes" note="How to read this view">
       <p style={{fontSize:12,lineHeight:1.7,color:"var(--muted)",margin:0}}>A simple moving average gives equal weight to each observation in its window. The shorter average responds more quickly to recent changes, while the longer average is slower. A crossover is a historical description only; it can lag sudden market moves and can produce false signals in range-bound periods.</p>
@@ -413,9 +414,10 @@ function FinancialReports({data}:{data:MarketPayload}){
 function Backtesting({data}:{data:MarketPayload}){
   const [pair,setPair]=useState("USD/KES"),[short,setShort]=useState("20"),[long,setLong]=useState("60"),[fee,setFee]=useState("0");
   const {rows,values}=seriesFor(data.fx,pair),s=Number(short),l=Number(long),cost=Number(fee)/10000;
+  const valid=Number.isInteger(s)&&Number.isInteger(l)&&s>=2&&l>s&&Number.isFinite(cost)&&cost>=0&&values.length>l+1;
   const points=[];
   let equity=1,benchmark=1,position=0,trades=0,peak=1,worst=0;
-  for(let i=1;i<values.length;i++){
+  for(let i=1;valid&&i<values.length;i++){
     const ready=i>=l;
     const signal=ready&&mean(values.slice(i-s,i))>mean(values.slice(i-l,i))?1:0;
     const changed=signal!==position;
@@ -428,8 +430,8 @@ function Backtesting({data}:{data:MarketPayload}){
   const strategyReturn=equity-1,benchmarkReturn=benchmark-1;
   return <div className="workspace-stack">
     <Panel title="Moving-average strategy test" note="Signals are formed from prior observations and applied to the next observed return">
-      <div className="metric-grid"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label><Field label="Short average (observations)" value={short} onChange={setShort} min="2"/><Field label="Long average (observations)" value={long} onChange={setLong} min="3"/><Field label="Cost per position change (basis points)" value={fee} onChange={setFee} min="0"/></div>
-      {s>=2&&l>s&&values.length>l+1?<div className="metric-grid"><Metric label="Strategy cumulative return" value={pct(strategyReturn)} note="Long / cash rule, before tax"/><Metric label="Buy-and-hold return" value={pct(benchmarkReturn)}/><Metric label="Strategy max drawdown" value={pct(worst)}/><Metric label="Entries" value={trades.toString()} note="Position changes from cash to long"/></div>:<NoData message="The short window must be below the long window, and the selected FX pair must contain more observations than the long window."/>}
+      <div className="metric-grid"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label><Field label="Short average (observations)" value={short} onChange={setShort} min="2" max="1000" step="1"/><Field label="Long average (observations)" value={long} onChange={setLong} min="3" max="1000" step="1"/><Field label="Cost per position change (basis points)" value={fee} onChange={setFee} min="0" max="1000"/></div>
+      {valid?<div className="metric-grid"><Metric label="Strategy cumulative return" value={pct(strategyReturn)} note="Long / cash rule, before tax"/><Metric label="Buy-and-hold return" value={pct(benchmarkReturn)}/><Metric label="Strategy max drawdown" value={pct(worst)}/><Metric label="Entries" value={trades.toString()} note="Position changes from cash to long"/></div>:<NoData message="The short window must be below the long window, and the selected FX pair must contain more observations than the long window."/>}
       {points.length?<ChartFrame height={320}><ResponsiveContainer><LineChart data={points}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" minTickGap={25} tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Line dataKey="strategy" name="Strategy index" stroke="#087f8c" strokeWidth={2} dot={false}/><Line dataKey="benchmark" name="Buy-and-hold index" stroke="#9aa6b2" strokeWidth={1.7} dot={false}/></LineChart></ResponsiveContainer></ChartFrame>:null}
     </Panel>
     <Panel title="Test design" note="Transparent assumptions">
@@ -441,18 +443,18 @@ function Backtesting({data}:{data:MarketPayload}){
 function StressTesting(){
   const [capital,setCapital]=useState("1000000"),[fxShock,setFxShock]=useState("-10"),[face,setFace]=useState("1000000"),[duration,setDuration]=useState("4"),[convexity,setConvexity]=useState("22"),[bps,setBps]=useState("100");
   const value=Number(capital),shock=Number(fxShock)/100,faceValue=Number(face),mod=Number(duration),conv=Number(convexity),dy=Number(bps)/10000;
+  const valid=value>0&&shock>-1&&Number.isFinite(shock)&&faceValue>0&&mod>=0&&mod<=100&&conv>=0&&conv<=10000&&Math.abs(Number(bps))<=5000;
   const stressedFx=value*(1+shock);
   const bondMove=-mod*dy+.5*conv*dy*dy,bondPrice=faceValue*(1+bondMove);
   const scenarios=[-30,-20,-15,-10,-5,0,5,10,15,20].map(x=>({shock:x,value:value*(1+x/100),pnl:value*x/100}));
   return <div className="workspace-stack">
     <Panel title="Capital shock scenarios" note="Deterministic scenarios applied to a user-entered reference portfolio value">
-      <div className="metric-grid"><Field label="Reference value (KES)" value={capital} onChange={setCapital} min="1"/><Field label="Selected FX shock (%)" value={fxShock} onChange={setFxShock}/></div>
-      <div className="metric-grid"><Metric label="Reference capital" value={money(value)}/><Metric label="FX shock P/L" value={money(stressedFx-value)}/><Metric label="Stressed value" value={money(stressedFx)}/><Metric label="Applied shock" value={pct(shock)}/></div>
-      <Table headers={["Scenario shock","Profit / loss","Stressed value"]} rows={scenarios.map(row=>[row.shock+"%",money(row.pnl),money(row.value)])}/>
+      <div className="metric-grid"><Field label="Reference value (KES)" value={capital} onChange={setCapital} min="1"/><Field label="Selected FX shock (%)" value={fxShock} onChange={setFxShock} min="-99" max="500"/></div>
+      {valid?<><div className="metric-grid"><Metric label="Reference capital" value={money(value)}/><Metric label="FX shock P/L" value={money(stressedFx-value)}/><Metric label="Stressed value" value={money(stressedFx)}/><Metric label="Applied shock" value={pct(shock)}/></div><Table headers={["Scenario shock","Profit / loss","Stressed value"]} rows={scenarios.map(row=>[row.shock+"%",money(row.pnl),money(row.value)])}/></>:<NoData message="Use positive capital and bond value, an FX shock above −100%, non-negative duration and convexity, and a rate shock within ±5,000 basis points."/>}
     </Panel>
     <Panel title="Fixed-income rate shock" note="Duration-convexity approximation; yield shock is applied in basis points">
-      <div className="metric-grid"><Field label="Bond reference value (KES)" value={face} onChange={setFace} min="1"/><Field label="Modified duration" value={duration} onChange={setDuration} min="0"/><Field label="Convexity" value={convexity} onChange={setConvexity} min="0"/><Field label="Yield shock (basis points)" value={bps} onChange={setBps}/></div>
-      <div className="metric-grid"><Metric label="Estimated price change" value={pct(bondMove)}/><Metric label="Estimated stressed value" value={money(bondPrice)}/><Metric label="Estimated P/L" value={money(bondPrice-faceValue)}/></div>
+      <div className="metric-grid"><Field label="Bond reference value (KES)" value={face} onChange={setFace} min="1"/><Field label="Modified duration" value={duration} onChange={setDuration} min="0" max="100"/><Field label="Convexity" value={convexity} onChange={setConvexity} min="0" max="10000"/><Field label="Yield shock (basis points)" value={bps} onChange={setBps} min="-5000" max="5000"/></div>
+      {valid?<div className="metric-grid"><Metric label="Estimated price change" value={pct(bondMove)}/><Metric label="Estimated stressed value" value={money(bondPrice)}/><Metric label="Estimated P/L" value={money(bondPrice-faceValue)}/></div>:<NoData message="Check the capital, duration, convexity and shock inputs. Inputs must be within the documented scenario bounds."/>}
       <p className="panel-note">This is a second-order approximation for a small parallel yield move. It is not a full revaluation of a particular bond or yield curve.</p>
     </Panel>
   </div>;
