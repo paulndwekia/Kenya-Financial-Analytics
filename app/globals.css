@@ -74,3 +74,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
  .top-actions{gap:5px}
  .theme-button{padding:7px}
 }
+
+.legal-page{max-width:850px;margin:0 auto;padding:54px 28px 80px;line-height:1.8;color:var(--ink)}.legal-page h1{font:800 30px Inter,ui-sans-serif,system-ui,sans-serif;letter-spacing:-.8px;margin:24px 0 14px}.legal-page h2{font:700 16px Inter,ui-sans-serif,system-ui,sans-serif;margin:26px 0 7px}.legal-page p{font-size:13px;color:var(--muted)}.legal-page a{color:var(--teal);font-size:12px;text-decoration:none}.legal-page small{font-size:10px;color:var(--muted)}
