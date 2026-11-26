@@ -26,6 +26,7 @@ export function levelDrawdown(levels:number[]):number;
 export function classifyYieldCurve(rates:Record<number,number>):string;
 export function yieldCurveSlopes(rates:Record<number,number>):Record<string,number>;
 export function interpolateYield(maturityDays:number,rates:Record<number,number>):number|null;
+export function simpleForwardRate(startSpotRate:number,endSpotRate:number,startDays:number,endDays:number):number;
 export function portfolioAllocation(assets:{name:string;value:number;expected_return:number;volatility:number}[]):{name:string;value:number;weight:number}[];
 export function portfolioMetrics(assets:{name:string;value:number;expected_return:number;volatility:number}[]):{total_value:number;expected_return:number;expected_annual_pnl:number;volatility:number;concentration_hhi:number;largest_weight:number;diversification_score:number;parametric_var_95:number;allocation:{name:string;value:number;weight:number}[]};
 export function portfolioStress(assets:{name:string;value:number;expected_return:number;volatility:number}[],shock:number):{portfolio_value:number;shock:number;change:number;ending_value:number};
