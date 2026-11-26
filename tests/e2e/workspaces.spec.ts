@@ -129,7 +129,7 @@ test("module navigation is reflected in the address and browser history", async 
   await mockMarketApi(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Bond Pricing", exact: true }).click();
-  await expect(page).toHaveURL(/module=Bond%20Pricing/);
+  await expect(page).toHaveURL(/module=Bond(?:%20|\+)Pricing/);
   await page.getByRole("button", { name: "Options & Greeks", exact: true }).click();
   await expect(page).toHaveURL(/module=Options+%26+Greeks|module=Options%20%26%20Greeks/);
   await page.goBack();
