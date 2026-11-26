@@ -163,7 +163,7 @@ def fetch_tbill_results():
                 and ("result" in lower or "result" in label)):
             urls.append(url)
     # Newest results are normally listed first on the official CBK page.
-    urls = list(dict.fromkeys(urls))[:5]
+    urls = list(dict.fromkeys(urls))[:2]
     if not urls:
         raise RuntimeError("No official CBK Treasury bill auction-result PDFs were found.")
 
