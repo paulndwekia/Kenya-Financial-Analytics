@@ -6,7 +6,7 @@ import {
   treasuryBillPrice, bondCashFlows, bondPrice, bondYtm, bondMetrics,
   bondPriceSensitivity, blackScholes, historicalVaR, parametricVaR,
   expectedShortfall, annualizedVolatility, sharpeRatio, sortinoRatio,
-  yieldCurveSlopes, classifyYieldCurve, interpolateYield,
+  yieldCurveSlopes, classifyYieldCurve, interpolateYield, simpleForwardRate,
   bondPriceShock, treasuryBillReinvestmentShock, cbkRateScenarios,
   curveScenario, portfolioMetrics, applyShock
 } from "../../lib/finance.mjs";
@@ -403,14 +403,21 @@ function YieldCurve({data}:{data:MarketPayload}){
   const ordered=[...latestCurve].sort((a,b)=>a.tenor_days-b.tenor_days);
   const curveRates=Object.fromEntries(ordered.map(row=>[row.tenor_days,row.rate])) as Record<number,number>;
   const slopes=yieldCurveSlopes(curveRates);
-  const shape=classifyYieldCurve(curveRates).replace("UPWARD SLOPING","Upward / normal").replace("DOWNWARD SLOPING","Downward / inverted").replace("MIXED / HUMPED","Mixed / humped").replace("INSUFFICIENT DATA","Not enough matched tenors");
+  const shape=latestCurve.length===TENORS.length
+    ?classifyYieldCurve(curveRates).replace("UPWARD SLOPING","Upward / normal").replace("DOWNWARD SLOPING","Downward / inverted").replace("MIXED / HUMPED","Mixed / humped").replace("INSUFFICIENT DATA","Not enough matched tenors")
+    :"Partial curve · "+latestCurve.length+" of "+TENORS.length+" matched tenors";
   const interpolate=(target:number):number|null=>ordered.length>=2&&target>=91&&target<=364?interpolateYield(target,curveRates):null;
   const [startDays,setStartDays]=useState("91"),[endDays,setEndDays]=useState("364");
   const start=Number(startDays),end=Number(endDays),r1=interpolate(start),r2=interpolate(end);
   const t1=start/365,t2=end/365;
   const forwardRate=r1!==null&&r2!==null&&end>start
-    ? Math.pow((Math.pow(1+r2,t2)/Math.pow(1+r1,t1)),1/(t2-t1))-1
+    ? simpleForwardRate(r1,r2,start,end)
     : null;
+  const slopeRows=[
+    {segment:"91 to 182 days",value:slopes["91_to_182"]??null},
+    {segment:"182 to 364 days",value:slopes["182_to_364"]??null},
+    {segment:"91 to 364 days",value:slopes["91_to_364"]??null}
+  ];
   const interpolationDays=[120,150,210,270,300];
   return <div className="workspace-stack">
     <Panel title="Latest recorded auction curve" note={latestDate||"No matched auction date"}>
@@ -419,21 +426,27 @@ function YieldCurve({data}:{data:MarketPayload}){
         <Metric label="364s–91s spread" value={spread===null?"—":pp(spread,3)} note={shape}/>
       </div>
       {curve.length>=2?<ChartFrame height={300}><ResponsiveContainer><LineChart data={curve}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="tenor" tick={{fontSize:11,fill:"#8291a0"}} label={{value:"Tenor (days)",position:"insideBottom",offset:-3,fontSize:10}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}} unit="%"/><ChartTooltip/><Line dataKey="yield" name="Auction yield" stroke="#356bb3" strokeWidth={2.5} dot={{r:5,fill:"#356bb3"}}/></LineChart></ResponsiveContainer></ChartFrame>:<NoData message="The latest auction does not contain two or more tenors on the same date. No missing observations have been estimated."/>}
-      <div className="panel-note">The curve uses only yields published for the same auction date. It does not combine the latest individual rates from different auctions.</div>
+      <div className="panel-note">Only observed tenors from the same auction date are plotted. Missing tenors are left missing; the curve never combines separate auction dates.</div>
+      <div className="yield-curve-slope-table">
+        <Table headers={["Observed segment","Yield difference","Reading"]} rows={slopeRows.map(row=>[
+          row.segment,row.value===null?"Not available":pp(row.value,3),row.value===null?"Both tenors required":row.value>0?"Longer tenor pays more":row.value<0?"Longer tenor pays less":"No difference"
+        ])}/>
+      </div>
     </Panel>
-    <Panel title="Interpolated spot rates" note="Linear interpolation between the latest matched 91-, 182- and 364-day observations">
+    <Panel title="Interpolated spot rates" note="Piecewise linear interpolation between observed tenors, limited to the actual supported maturity range">
       <Table headers={["Model maturity","Interpolated spot yield","Method"]} rows={interpolationDays.map(day=>{
         const value=interpolate(day);
-        return [day+" days",value===null?"Not available":pct(value,4),"Linear between adjacent observed tenors"];
+        return [day+" days",value===null?"Not available":pct(value,4),value===null?"Outside observed support":"Linear between adjacent observed tenors"];
       })}/>
       <p className="panel-note">These intermediate maturities are model estimates, not separate CBK auction observations. Values are not extrapolated outside the published 91–364 day range.</p>
     </Panel>
-    <Panel title="Implied forward rate" note="Annualised effective forward rate derived from interpolated spot rates">
+    <Panel title="Implied forward rate" note="Annualised simple forward yield derived using the 365-day Treasury bill investment-yield convention">
       <div className="control-row">
         <label className="field"><span>Forward period starts (days)</span><select className="search" value={startDays} onChange={e=>setStartDays(e.target.value)}>{[91,120,150,182,210,270].map(x=><option key={x} value={x}>{x} days</option>)}</select></label>
         <label className="field"><span>Forward period ends (days)</span><select className="search" value={endDays} onChange={e=>setEndDays(e.target.value)}>{[182,210,270,300,364].map(x=><option key={x} value={x}>{x} days</option>)}</select></label>
       </div>
-      <div className="metric-grid"><Metric label="Implied forward rate" value={forwardRate===null?"—":pct(forwardRate,4)} note={forwardRate===null?"Choose an increasing maturity pair with available spot rates":"From day "+start+" to day "+end}/><Metric label="Short spot rate" value={r1===null?"—":pct(r1,4)}/><Metric label="Long spot rate" value={r2===null?"—":pct(r2,4)}/></div>
+      <div className="metric-grid"><Metric label="Implied simple forward rate" value={forwardRate===null?"—":pct(forwardRate,4)} note={forwardRate===null?"Choose an increasing maturity pair with available spot rates":"From day "+start+" to day "+end}/><Metric label="Short spot rate" value={r1===null?"—":pct(r1,4)}/><Metric label="Long spot rate" value={r2===null?"—":pct(r2,4)}/></div>
+      <p className="panel-note">This is an implied rate from two modelled spot maturities, not a rate quoted by CBK or a forecast of future policy rates.</p>
     </Panel>
     <Panel title="Curve observations" note="Source records from the latest auction">
       <Table headers={["Tenor","Auction date","Market-weighted yield","Price per KES 100","Issue number","Source"]} rows={latestCurve.map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.price===null||row.price===undefined?"—":Number(row.price).toFixed(4),row.issue_number||"—",row.source])}/>
