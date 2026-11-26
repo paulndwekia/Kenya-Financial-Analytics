@@ -657,19 +657,6 @@ function ResearchIntelligence({data}:{data:MarketPayload}){
   </div>;
 }
 
-function escapeHtml(value:unknown){
-  return String(value??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
-}
-function htmlTable(headers:string[],rows:(string|number)[][]){
-  return "<table><thead><tr>"+headers.map(value=>"<th>"+escapeHtml(value)+"</th>").join("")+"</tr></thead><tbody>"+
-    rows.map(row=>"<tr>"+row.map(value=>"<td>"+escapeHtml(value)+"</td>").join("")+"</tr>").join("")+
-    "</tbody></table>";
-}
-function htmlDownload(filename:string,html:string){
-  const blob=new Blob([html],{type:"text/html;charset=utf-8"});
-  const url=URL.createObjectURL(blob),link=document.createElement("a");
-  link.href=url;link.download=filename;link.click();URL.revokeObjectURL(url);
-}
 function FinancialReports({data}:{data:MarketPayload}){
   const generated=new Date().toLocaleString("en-KE");
   const [reporting,setReporting]=useState(false),[reportError,setReportError]=useState("");
@@ -694,12 +681,6 @@ function FinancialReports({data}:{data:MarketPayload}){
   const fx=PAIRS.map(pair=>{const {rows,values,rets}=seriesFor(data.fx,pair);return {pair,rows,latest:values.at(-1),change:values.length>1?values.at(-1)!/values[0]-1:0,vol:stdev(rets)*Math.sqrt(252)};});
   const dates=data.bills.map(x=>x.date).sort(),latestDate=dates.at(-1)||"";
   const latestBills=TENORS.map(tenor=>data.bills.filter(x=>x.tenor_days===tenor).sort((a,b)=>b.date.localeCompare(a.date))[0]).filter(Boolean);
-  const exportRows=[
-    ...fx.map(x=>{const row=x.rows.at(-1);return ["FX",x.pair,row?.date||"",x.latest??"",pct(x.change),pct(x.vol),x.rows.length,row?.source||"",row?.source_url||""];}),
-    ...latestBills.map(x=>["Treasury bill",x.tenor_days+" days",x.date,pct(x.rate,4),"","",data.bills.filter(row=>row.tenor_days===x.tenor_days).length,x.source,x.source_url||""])
-  ];
-  const fxReportRows=fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest??"",x.change,x.vol,x.rows.length,x.rows.at(-1)?.source||"—"]);
-  const billReportRows=latestBills.map(row=>[row.tenor_days+" days",row.date,row.rate,row.price??"",row.issue_number||"—",row.source]);
   const summaryCsvRows=[
     ...fx.map(x=>["FX",x.pair,x.rows.at(-1)?.date||"",x.latest??"",x.change,x.vol,x.rows.length,x.rows.at(-1)?.source||"",x.rows.at(-1)?.source_url||""]),
     ...latestBills.map(row=>["Treasury bill",row.tenor_days+" days",row.date,row.rate,"","",data.bills.filter(x=>x.tenor_days===row.tenor_days).length,row.source,row.source_url||""])
