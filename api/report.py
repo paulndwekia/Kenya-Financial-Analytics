@@ -289,9 +289,11 @@ def build_workbook(fx, bills, refresh):
             "name": pair,
             "categories": ["Chart Data", 1, 0, len(all_fx_dates), 0],
             "values": ["Chart Data", 1, idx + 1, len(all_fx_dates), idx + 1],
-            "line": {"width": 2.0},
+            "line": {"color": [TEAL, BLUE, GOLD][idx], "width": 2.0},
             "marker": {"type": "none"},
         })
+    fx_chart.show_hidden_data()
+    fx_chart.show_blanks_as("gap")
     fx_chart.set_title({"name": "KES exchange-rate history"})
     fx_chart.set_x_axis({"name": "CBK observation date", "date_axis": True, "num_format": "mmm-yy", "line": {"color": "#AAB7C4"}})
     fx_chart.set_y_axis({"name": "KES per unit", "num_format": "#,##0.00", "major_gridlines": {"visible": True, "line": {"color": "#E5EBF0"}}})
@@ -311,10 +313,12 @@ def build_workbook(fx, bills, refresh):
             "name": f"{tenor_value}-day",
             "categories": ["Chart Data", 1, 5, len(all_bill_dates), 5],
             "values": ["Chart Data", 1, idx + 5, len(all_bill_dates), idx + 5],
-            "line": {"width": 2.0},
+            "line": {"color": [TEAL, BLUE, GOLD][idx - 1], "width": 2.0},
             "marker": {"type": "circle", "size": 3},
             "gap": True,
         })
+    bill_chart.show_hidden_data()
+    bill_chart.show_blanks_as("gap")
     bill_chart.set_title({"name": "Treasury bill auction yields"})
     bill_chart.set_x_axis({"name": "Auction date", "date_axis": True, "num_format": "mmm-yy"})
     bill_chart.set_y_axis({"name": "Accepted yield", "num_format": "0.00%", "major_gridlines": {"visible": True, "line": {"color": "#E5EBF0"}}})
