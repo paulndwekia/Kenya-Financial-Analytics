@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import {
   treasuryBillPrice, bondCashFlows, bondPrice, bondYtm, bondMetrics,
   bondPriceSensitivity, blackScholes, historicalVaR, parametricVaR,
@@ -79,10 +80,10 @@ function Metric({label,value,note}:{label:string;value:string;note?:string}){
     <div className="metric-label">{label}</div><div className="metric-value">{value}</div>{note&&<div className="metric-foot">{note}</div>}
   </motion.div>;
 }
-function Panel({title,note,children,action}:{title:string;note?:string;children:React.ReactNode;action?:React.ReactNode}){
+function Panel({title,note,children,action}:{title:string;note?:string;children:ReactNode;action?:ReactNode}){
   return <section className="panel"><div className="panel-head"><div><div className="panel-title">{title}</div>{note&&<div className="panel-note">{note}</div>}</div>{action}</div>{children}</section>;
 }
-function ChartFrame({children,height=280}:{children:React.ReactNode;height?:number}){
+function ChartFrame({children,height=280}:{children:ReactNode;height?:number}){
   return <div style={{width:"100%",height}}>{children}</div>;
 }
 function NoData({message}:{message:string}){
