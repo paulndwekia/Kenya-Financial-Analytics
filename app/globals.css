@@ -164,8 +164,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
  .bond-cashflow-chart{height:205px!important}
 }
 @media(max-width:380px){
- .treasury-kpi-grid{grid-template-columns:minmax(0,1fr)}
- .treasury-kpi-grid .metric-card:first-child{grid-column:auto}
+ .treasury-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .treasury-kpi-grid .metric-card:first-child{grid-column:1/-1}
  .treasury-calculator-fields{grid-template-columns:minmax(0,1fr)}
  .treasury-calculator-fields .field:first-child{grid-column:auto}
  .bond-price-chart{height:200px!important}
