@@ -107,6 +107,27 @@ async function mockMarketApi(page: Page) {
   });
 }
 
+test("dashboard provides a distinct market overview and truthful import status", async ({ page }) => {
+  await mockMarketApi(page);
+  await page.goto("/");
+  await expect(page.locator(".dashboard-quote-card")).toHaveCount(3);
+  await expect(page.locator(".dashboard-quote-card").nth(0)).toContainText("USD/KES");
+  await expect(page.locator(".dashboard-quote-card").nth(1)).toContainText("GBP/KES");
+  await expect(page.locator(".dashboard-quote-card").nth(2)).toContainText("EUR/KES");
+  await expect(page.locator(".dashboard-index-chart .recharts-line")).toHaveCount(3);
+  await expect(page.getByText("All three tenors are available for this auction.")).toBeVisible();
+  await expect(page.getByText("Latest import attempt", { exact: true })).toBeVisible();
+  await expect(page.locator(".dashboard-health-item .health-good")).toContainText("Successful");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const quoteCardsFit = await page.locator(".dashboard-quote-grid").evaluate(element => {
+    const parent = element.getBoundingClientRect();
+    const cards = [...element.querySelectorAll(".dashboard-quote-card")].map(card => card.getBoundingClientRect());
+    return cards.every(card => card.left >= parent.left - 1 && card.right <= parent.right + 1);
+  });
+  expect(quoteCardsFit).toBe(true);
+});
+
 test("all 16 workspaces open from navigation and show their own analytical graph", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", error => pageErrors.push(error.message));
