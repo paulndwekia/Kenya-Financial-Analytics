@@ -696,25 +696,22 @@ function StressTesting({data}:{data:MarketPayload}){
   const selectedBill=latestAuction.find(row=>row.tenor_days===tenor)||data.bills.filter(row=>row.tenor_days===tenor).sort((x,y)=>x.date.localeCompare(y.date)).at(-1);
   const effectiveRate=tbillRateOverride===""?(selectedBill?.rate??.09):Number(tbillRateOverride)/100;
   const valid=[value,shock,bond,mod,conv,tbill,tenor,effectiveRate].every(Number.isFinite)&&value>0&&shock>-1&&shock<=5&&bond>0&&mod>=0&&mod<=100&&conv>=0&&conv<=10000&&tbill>=0&&[91,182,364].includes(tenor)&&effectiveRate>=0&&effectiveRate<=1;
-  const stressed=value*(1+shock);
+  const capitalScenario=applyShock(value,shock);
+  const stressed=capitalScenario.ending_value;
   const scenarios=[-30,-20,-15,-10,-5,0,5,10,15,20].map(x=>({shock:x,value:value*(1+x/100),pnl:value*x/100}));
   const startingFixedIncome=bond+tbill;
-  const cbkScenarios=[{name:"CBK +50 bps",change:.005},{name:"CBK +100 bps",change:.01},{name:"CBK +200 bps",change:.02},{name:"CBK −50 bps",change:-.005},{name:"CBK −100 bps",change:-.01}];
-  const fixedIncomeRows=cbkScenarios.map(item=>{
-    const bondMove=-mod*item.change+.5*conv*item.change**2;
-    const bondPnl=bond*bondMove;
-    const newRate=effectiveRate+item.change;
-    const tbillIncomeNow=tbill*effectiveRate*tenor/365;
-    const tbillIncomeStressed=tbill*newRate*tenor/365;
-    const tbillPnl=tbillIncomeStressed-tbillIncomeNow;
-    return {name:item.name,change:item.change,bondPnl,tbillPnl,totalPnl:bondPnl+tbillPnl,ending:startingFixedIncome+bondPnl+tbillPnl};
+  const fixedIncomeRows=cbkRateScenarios().map(item=>{
+    const bondPnl=bondPriceShock(bond,mod,conv,item.rate_change).change;
+    const tbillPnl=treasuryBillReinvestmentShock(tbill,effectiveRate,item.rate_change,tenor).income_change;
+    return {name:item.name,change:item.rate_change,bondPnl,tbillPnl,totalPnl:bondPnl+tbillPnl,ending:startingFixedIncome+bondPnl+tbillPnl};
   });
   const curveRates=[91,182,364].map(days=>({days,row:latestAuction.find(x=>x.tenor_days===days)})).filter(x=>x.row);
-  const curveRows=curveRates.map(({days,row})=>{
-    const shortChange=days<=182?-.005:.005;
-    const flatChange=-shortChange;
-    return {days,current:row!.rate,steep:row!.rate+shortChange,flat:row!.rate+flatChange};
-  });
+  const observedCurve=Object.fromEntries(curveRates.map(({days,row})=>[days,row.rate])) as Record<number,number>;
+  const steepened=curveScenario(observedCurve,-.005,.005);
+  const flattened=curveScenario(observedCurve,.005,-.005);
+  const curveRows=curveRates.map(({days,row})=>({
+    days,current:row.rate,steep:steepened[String(days)]?.stressed_rate??row.rate,flat:flattened[String(days)]?.stressed_rate??row.rate
+  }));
   return <div className="workspace-stack">
     <Panel title="Capital market shock" note="Apply a direct percentage shock to a user-entered portfolio reference value">
       <div className="metric-grid"><Field label="Reference portfolio value (KES)" value={capital} onChange={setCapital} min="1"/><Field label="Market shock (%)" value={fxShock} onChange={setFxShock} min="-99" max="500"/></div>
