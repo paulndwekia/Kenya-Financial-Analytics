@@ -260,6 +260,17 @@ test("module controls change the calculations and data views", async ({ page }) 
   await expect(page.getByText("Total allocation: 100.00%", { exact: false })).toBeVisible();
   await expect(page.locator(".recharts-area")).toBeVisible();
 
+  // Historical Market Explorer: switch datasets, filter a tenor and export only matching records.
+  await page.getByRole("button", { name: "Historical Market Explorer", exact: true }).click();
+  await page.getByLabel("Dataset").selectOption("Treasury bills");
+  await page.getByLabel("Bill tenor").selectOption("364");
+  await expect(page.locator(".explorer-result-meta")).toContainText("16 records");
+  const [filteredBills] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export filtered CSV" }).click(),
+  ]);
+  expect(filteredBills.suggestedFilename()).toBe("KFA_Treasury_Bill_Historical_Observations.csv");
+
   // Backtesting: the Treasury bill strategy has its own signal and lookback.
   await page.getByRole("button", { name: "Backtesting", exact: true }).click();
   await page.getByLabel("Backtest mode").selectOption("Treasury bill yield momentum");
@@ -317,4 +328,12 @@ test("financial report exports have the expected formats and platform heading", 
     page.getByRole("button", { name: "Full history CSV" }).click(),
   ]);
   expect(history.suggestedFilename()).toBe("KFA_Full_Market_History.csv");
+  const stream = await history.createReadStream();
+  if (!stream) throw new Error("The full-history CSV download did not create a readable file.");
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const csv = Buffer.concat(chunks).toString("utf8");
+  expect(csv).toContain("Daily FX change (decimal)");
+  expect(csv).toContain("USD/KES");
+  expect(csv).toContain("Treasury bill");
 });
