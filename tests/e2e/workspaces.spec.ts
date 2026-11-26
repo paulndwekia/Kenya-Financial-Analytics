@@ -129,9 +129,9 @@ test("module navigation is reflected in the address and browser history", async 
   await mockMarketApi(page);
   await page.goto("/");
   await page.getByRole("button", { name: "Bond Pricing", exact: true }).click();
-  await expect(page).toHaveURL(/module=Bond(?:%20|\+)Pricing/);
+  await expect.poll(() => new URL(page.url()).searchParams.get("module")).toBe("Bond Pricing");
   await page.getByRole("button", { name: "Options & Greeks", exact: true }).click();
-  await expect(page).toHaveURL(/module=Options+%26+Greeks|module=Options%20%26%20Greeks/);
+  await expect.poll(() => new URL(page.url()).searchParams.get("module")).toBe("Options & Greeks");
   await page.goBack();
   await expect(page.locator(".page-title")).toHaveText("Bond Pricing");
   await page.goBack();
