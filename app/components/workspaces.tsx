@@ -493,7 +493,7 @@ function HistoricalExplorer({data}:{data:MarketPayload}){
       <div className="explorer-filter-grid">
         <label className="field"><span>Dataset</span><select className="search" value={kind} onChange={event=>{setKind(event.target.value);setView("chart");}}><option>FX</option><option>Treasury bills</option></select></label>
         {kind==="FX"
-          ?<label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={event=>setPair(event.target.value)}><option>All pairs</option>{PAIRS.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+          ?<label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={event=>setPair(event.target.value)}><option value="All">All pairs</option>{PAIRS.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
           :<label className="field"><span>Bill tenor</span><select className="search" value={tenor} onChange={event=>setTenor(event.target.value)}><option value="All">All tenors</option>{TENORS.map(value=><option key={value} value={value}>{value} days</option>)}</select></label>}
         <label className="field"><span>From date</span><input className="search" type="date" value={from} max={to||undefined} onChange={event=>setFrom(event.target.value)}/></label>
         <label className="field"><span>To date</span><input className="search" type="date" value={to} min={from||undefined} onChange={event=>setTo(event.target.value)}/></label>
