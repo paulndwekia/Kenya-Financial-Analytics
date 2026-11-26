@@ -354,7 +354,7 @@ test("module controls change the calculations and data views", async ({ page }) 
   await expect(page.locator(".bond-cashflow-table tbody tr")).toHaveCount(20);
   await expect.poll(() => page.locator(".bond-cashflow-chart .recharts-bar-rectangle").count()).toBeGreaterThanOrEqual(5);
   await expect(page.locator(".bond-price-chart .recharts-line")).toHaveCount(2);
-  await expect(page.locator(".bond-price-chart .recharts-reference-line")).toBeVisible();
+  await expect(page.locator(".bond-yield-readout")).toContainText("13.00%");
 
   // Bond schedules must land exactly on the contractual maturity date.
   await page.getByLabel("Years to maturity").fill("2.3");
