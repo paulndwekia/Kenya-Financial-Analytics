@@ -25,7 +25,7 @@ def get(url, accept=None):
     headers = dict(HEADERS)
     if accept:
         headers["Accept"] = accept
-    response = requests.get(url, headers=headers, timeout=(8, 25), allow_redirects=True)
+    response = requests.get(url, headers=headers, timeout=(4, 8), allow_redirects=True)
     response.raise_for_status()
     return response
 
@@ -162,7 +162,7 @@ def fetch_tbill_results():
                 and ("result" in lower or "result" in label)):
             urls.append(url)
     # Newest results are normally listed first on the official CBK page.
-    urls = list(dict.fromkeys(urls))[:25]
+    urls = list(dict.fromkeys(urls))[:2]
     if not urls:
         raise RuntimeError("No official CBK Treasury bill auction-result PDFs were found.")
 
