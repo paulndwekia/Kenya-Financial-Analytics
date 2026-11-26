@@ -672,6 +672,25 @@ function htmlDownload(filename:string,html:string){
 }
 function FinancialReports({data}:{data:MarketPayload}){
   const generated=new Date().toLocaleString("en-KE");
+  const [reporting,setReporting]=useState(false),[reportError,setReportError]=useState("");
+  const downloadExcelReport=async()=>{
+    setReporting(true);setReportError("");
+    try{
+      const response=await fetch("/api/report",{cache:"no-store"});
+      if(!response.ok){
+        let message="The formatted Excel report could not be generated.";
+        try{const payload=await response.json();message=payload.error||message;}catch{}
+        throw new Error(message);
+      }
+      const blob=await response.blob();
+      const url=URL.createObjectURL(blob),anchor=document.createElement("a");
+      anchor.href=url;anchor.download="Kenya_Financial_Analytics_Market_Report.xlsx";
+      document.body.appendChild(anchor);anchor.click();anchor.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }catch(error){
+      setReportError(error instanceof Error?error.message:"The report download failed. Please retry.");
+    }finally{setReporting(false);}
+  };
   const fx=PAIRS.map(pair=>{const {rows,values,rets}=seriesFor(data.fx,pair);return {pair,rows,latest:values.at(-1),change:values.length>1?values.at(-1)!/values[0]-1:0,vol:stdev(rets)*Math.sqrt(252)};});
   const dates=data.bills.map(x=>x.date).sort(),latestDate=dates.at(-1)||"";
   const latestBills=TENORS.map(tenor=>data.bills.filter(x=>x.tenor_days===tenor).sort((a,b)=>b.date.localeCompare(a.date))[0]).filter(Boolean);
@@ -679,14 +698,24 @@ function FinancialReports({data}:{data:MarketPayload}){
     ...fx.map(x=>{const row=x.rows.at(-1);return ["FX",x.pair,row?.date||"",x.latest??"",pct(x.change),pct(x.vol),x.rows.length,row?.source||"",row?.source_url||""];}),
     ...latestBills.map(x=>["Treasury bill",x.tenor_days+" days",x.date,pct(x.rate,4),"","",data.bills.filter(row=>row.tenor_days===x.tenor_days).length,x.source,x.source_url||""])
   ];
-  const fxReportRows=fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest?.toFixed(4)||"—",pct(x.change),pct(x.vol),x.rows.length,x.rows.at(-1)?.source||"—"]);
-  const billReportRows=latestBills.map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.issue_number||"—",row.source]);
-  const htmlReport="<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Kenya Financial Analytics — Market Report</title><style>body{font:14px/1.6 Inter,Segoe UI,Arial,sans-serif;color:#1c3040;max-width:1100px;margin:40px auto;padding:0 24px}h1{font-size:28px;letter-spacing:-.5px}h2{font-size:17px;margin-top:32px}p,small{color:#647585}.meta{border-bottom:1px solid #dce4ea;padding-bottom:18px}table{width:100%;border-collapse:collapse;margin:12px 0 22px;font-size:12px}th,td{text-align:left;padding:9px;border-bottom:1px solid #e3e9ed}th{background:#f3f6f8;color:#44586a;font-weight:700}footer{border-top:1px solid #dce4ea;margin-top:36px;padding-top:16px;color:#647585;font-size:11px}</style></head><body><h1>Kenya Financial Analytics</h1><div class='meta'><strong>Market snapshot</strong><br>Generated: "+escapeHtml(generated)+"<br>FX latest observation: "+escapeHtml(data.health.latest_fx_observation||"Not available")+"<br>Treasury bill latest auction: "+escapeHtml(data.health.latest_bill_observation||"Not available")+"<br>Data source: Central Bank of Kenya</div><h2>Foreign exchange overview</h2>"+htmlTable(["Pair","Latest date","Latest rate","Cumulative change","Annualised volatility","Observations","Source"],fxReportRows)+"<h2>Latest Treasury bill auction</h2>"+htmlTable(["Tenor","Auction date","Market-weighted yield","Issue number","Source"],billReportRows)+"<h2>Data coverage and limitations</h2><p>The figures in this report are based on stored observations attributed to the Central Bank of Kenya. Coverage differs by instrument. Missing auction dates and tenors are not interpolated in the historical tables. Intermediate rates, where shown in the Yield Curve workspace, are model estimates and are identified separately. Volatility is a historical statistic, not a forward-looking forecast.</p><footer>Kenya Financial Analytics · For research and information only. Not investment advice.</footer></body></html>";
+  const fxReportRows=fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest??"",x.change,x.vol,x.rows.length,x.rows.at(-1)?.source||"—"]);
+  const billReportRows=latestBills.map(row=>[row.tenor_days+" days",row.date,row.rate,row.price??"",row.issue_number||"—",row.source]);
+  const summaryCsvRows=[
+    ...fx.map(x=>["FX",x.pair,x.rows.at(-1)?.date||"",x.latest??"",x.change,x.vol,x.rows.length,x.rows.at(-1)?.source||"",x.rows.at(-1)?.source_url||""]),
+    ...latestBills.map(row=>["Treasury bill",row.tenor_days+" days",row.date,row.rate,"","",data.bills.filter(x=>x.tenor_days===row.tenor_days).length,row.source,row.source_url||""])
+  ];
+  const detailedCsvRows=[
+    ...data.fx.map(row=>["FX",row.date,row.instrument,"",row.value,"","","","","",row.source,row.source_url||""]),
+    ...data.bills.map(row=>["Treasury bill",row.date,"",row.tenor_days,row.rate,row.price??(100/(1+row.rate*row.tenor_days/365)),"",row.issue_number||"",row.amount_offered??"",row.amount_accepted??"",row.source,row.source_url||""])
+  ].sort((a,b)=>String(a[1]).localeCompare(String(b[1]))||String(a[0]).localeCompare(String(b[0]))||String(a[2]||a[3]).localeCompare(String(b[2]||b[3])));
+  const summaryHeaders=["Record type","Instrument","Latest observation date","Latest rate / yield (decimal)","Cumulative FX change (decimal)","Annualised FX volatility (decimal)","Observations","Published source","Source URL"];
+  const detailedHeaders=["Record type","Observation date","Currency pair","Tenor (days)","Rate / accepted yield (decimal)","Price per KES 100","Daily FX change (decimal)","Issue number","Amount offered (KES)","Amount accepted (KES)","Published source","Source URL"];
   return <div className="workspace-stack">
     <Panel title="Market research report" note={"Generated "+generated+" · Source: Central Bank of Kenya"}>
       <div className="metric-grid"><Metric label="FX observations" value={data.fx.length.toLocaleString("en-KE")}/><Metric label="Auction observations" value={data.bills.length.toLocaleString("en-KE")}/><Metric label="FX coverage" value={(data.fx.map(x=>x.date).sort()[0]||"—")+" to "+(data.health.latest_fx_observation||"—")}/><Metric label="Auction coverage" value={(dates[0]||"—")+" to "+(data.health.latest_bill_observation||"—")}/></div>
-      <div className="panel-head"><div><div className="panel-title">Currency market summary</div><div className="panel-note">Cumulative change over each series' available period</div></div><div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button className="primary-btn" onClick={()=>csvDownload("kenya-financial-analytics-report.csv",["Section","Instrument","Latest date","Latest value","Cumulative change","Annualised volatility","Observations","Source","Source URL"],exportRows)}>Download report CSV</button><button className="theme-button" onClick={()=>htmlDownload("kenya-financial-analytics-report.html",htmlReport)}>Download HTML report</button></div></div>
-      <Table headers={["Pair","Latest date","Latest rate","Cumulative change","Annualised volatility","Observations","Source"]} rows={fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest?.toFixed(4)||"—",pct(x.change),pct(x.vol),x.rows.length,x.rows.at(-1)?.source||"—"])}/>
+      <div className="panel-head"><div><div className="panel-title">Financial reporting exports</div><div className="panel-note">Formatted workbook for presentation; numeric CSV files for further analysis</div></div><div className="report-actions"><button className="primary-btn" onClick={()=>void downloadExcelReport()} disabled={reporting}>{reporting?"Preparing workbook…":"Download formatted Excel"}</button><button className="secondary-btn" onClick={()=>csvDownload("KFA_Executive_Summary.csv",summaryHeaders,summaryCsvRows)}>Executive summary CSV</button><button className="secondary-btn" onClick={()=>csvDownload("KFA_Full_Market_History.csv",detailedHeaders,detailedCsvRows)}>Full history CSV</button></div></div>
+      {reportError&&<p className="report-error" role="alert">{reportError}</p>}
+      <Table headers={["Pair","Latest date","Latest rate (KES / unit)","Cumulative change","Annualised volatility","Observations","Source"]} rows={fx.map(x=>[x.pair,x.rows.at(-1)?.date||"—",x.latest?.toFixed(4)||"—",pct(x.change),pct(x.vol),x.rows.length,x.rows.at(-1)?.source||"—"])}/>
     </Panel>
     <Panel title="Latest Treasury bill auction snapshot" note={latestDate||"No auction results in database"}>
       <Table headers={["Tenor","Auction date","Market-weighted yield","Issue number","Source"]} rows={latestBills.map(row=>[row.tenor_days+" days",row.date,pct(row.rate,4),row.issue_number||"—",row.source])}/>
