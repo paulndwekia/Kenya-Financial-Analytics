@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   treasuryBillPrice,treasuryBillDiscountPrice,treasuryBillYield,treasuryBillDiscountRate,
-  bondPrice,bondYtm,bondMetrics,blackScholes,historicalVaR,parametricVaR,expectedShortfall,
+  bondPrice,bondYtm,bondMetrics,rateDecimal,blackScholes,historicalVaR,parametricVaR,expectedShortfall,
   classifyYieldCurve,yieldCurveSlopes,interpolateYield,portfolioMetrics,bondPriceShock,
   treasuryBillReinvestmentShock,cbkRateScenarios
 } from "../lib/finance.mjs";
@@ -68,4 +68,12 @@ test("CBK rate-shock scenario set has five named cases",()=>{
   assert.ok(result.change<0);
   const t=treasuryBillReinvestmentShock(600000,.09,.01,91);
   assert.ok(t.income_change>0);
+});
+
+test("all finance rate inputs use explicit decimal fractions without hidden percent conversion",()=>{
+  assert.equal(rateDecimal(0.09),0.09);
+  assert.equal(rateDecimal(1.5),1.5);
+  const highYieldPrice=bondPrice(100000,.12,1.5,5,2);
+  assert.ok(highYieldPrice>0);
+  assert.ok(Math.abs(bondYtm(100000,.12,highYieldPrice,5,2)-1.5)<1e-8);
 });
