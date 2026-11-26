@@ -22,7 +22,7 @@ import {
 } from "recharts";
 
 export type FxRow = {date:string; instrument:string; value:number; source:string; source_url?:string|null};
-export type BillRow = {date:string; tenor_days:number; rate:number; price?:number|null; issue_number?:string|null; source:string; source_url?:string|null};
+export type BillRow = {date:string; tenor_days:number; rate:number; price?:number|null; amount_offered?:number|null; amount_accepted?:number|null; issue_number?:string|null; source:string; source_url?:string|null};
 export type MarketPayload = {
   ok:boolean; fx:FxRow[]; bills:BillRow[]; source:string; retrieved_at:string|null;
   health:{database?:string;database_connected?:boolean;fx_rows:number;bills_rows:number;latest_fx_observation?:string|null;latest_bill_observation?:string|null;last_refresh?:{status:string;completed_at:string|null;source:string;fx_rows_upserted:number;bill_rows_upserted:number}|null;warnings?:string[]};
