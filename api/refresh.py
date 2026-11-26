@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from pypdf import PdfReader
 from psycopg.rows import dict_row
 
-CBK_FOREX_URL = "https://www.centralbank.go.ke/rates/forex-exchange-rates/"
+CBK_FOREX_URL = "https://www.centralbank.go.ke/new-rates/"
 CBK_TBILLS_URL = "https://www.centralbank.go.ke/bills-bonds/treasury-bills/"
 SOURCE = "Central Bank of Kenya"
 HEADERS = {
@@ -49,6 +49,8 @@ def parse_rate(value):
 
 
 def fetch_fx():
+    # Use CBK's current New Rates page. The older /forex/ page includes
+    # a legacy historical table and is not the current daily feed.
     response = get(CBK_FOREX_URL)
     soup = BeautifulSoup(response.text, "html.parser")
     currency_map = {
@@ -63,11 +65,12 @@ def fetch_fx():
             if len(cells) < 3:
                 continue
             date = parse_date(cells[0])
-            currency = re.sub(r"\s+", " ", cells[1].upper()).strip()
+            currency = re.sub(r"\\s+", " ", cells[1].upper()).strip()
             instrument = currency_map.get(currency)
             rate = parse_rate(cells[2])
             if date and instrument and rate and 80 < rate < 250:
-                observations[(date.isoformat(), instrument)] = {
+                key = (date.isoformat(), instrument)
+                observations[key] = {
                     "date": date.isoformat(),
                     "instrument": instrument,
                     "rate": rate,
@@ -76,26 +79,26 @@ def fetch_fx():
                 }
 
     if observations:
-        return list(observations.values())
+        # Keep the newest CBK rows returned by the published page.
+        return sorted(observations.values(), key=lambda row: (row["date"], row["instrument"]))
 
-    # Fallback to the CBK daily rates page; only use its explicitly posted date.
-    current_url = "https://www.centralbank.go.ke/new-rates/"
-    page = get(current_url)
-    text = BeautifulSoup(page.text, "html.parser").get_text("\n", strip=True)
-    posted = re.search(r"Posted\s+On\s*:?\s*(\d{1,2}-\d{1,2}-\d{4})", text, re.I)
+    # The current page also publishes a concise daily-rate summary.
+    # Only use it when CBK supplies its explicit "Posted On" date.
+    text = soup.get_text("\\n", strip=True)
+    posted = re.search(r"Posted\\s+On\\s*:?\\s*(\\d{1,2}-\\d{1,2}-\\d{4})", text, re.I)
     posted_date = parse_date(posted.group(1)) if posted else None
     if not posted_date:
-        raise RuntimeError("The CBK daily FX page did not provide a usable posted date.")
+        raise RuntimeError("CBK New Rates page did not expose dated FX observations or a posted date.")
     patterns = {
-        "USD/KES": r"US\s+DOLLAR\s*[|:]\s*([0-9]+(?:\.[0-9]+)?)",
-        "GBP/KES": r"STG\s+POUND\s*[|:]\s*([0-9]+(?:\.[0-9]+)?)",
-        "EUR/KES": r"EURO\s*[|:]\s*([0-9]+(?:\.[0-9]+)?)",
+        "USD/KES": r"US\\s+DOLLAR\\s*[|:]\\s*([0-9]+(?:\\.[0-9]+)?)",
+        "GBP/KES": r"STG\\s+POUND\\s*[|:]\\s*([0-9]+(?:\\.[0-9]+)?)",
+        "EUR/KES": r"EURO\\s*[|:]\\s*([0-9]+(?:\\.[0-9]+)?)",
     }
     fallback = []
     for instrument, pattern in patterns.items():
         match = re.search(pattern, text, re.I)
         if not match:
-            raise RuntimeError("CBK daily rate missing for " + instrument)
+            raise RuntimeError("CBK current daily rate missing for " + instrument)
         rate = parse_rate(match.group(1))
         if not rate or not 80 < rate < 250:
             raise RuntimeError("CBK daily rate failed validation for " + instrument)
@@ -104,7 +107,7 @@ def fetch_fx():
             "instrument": instrument,
             "rate": rate,
             "source": SOURCE,
-            "source_url": current_url,
+            "source_url": CBK_FOREX_URL,
         })
     return fallback
 
@@ -162,7 +165,7 @@ def fetch_tbill_results():
                 and ("result" in lower or "result" in label)):
             urls.append(url)
     # Newest results are normally listed first on the official CBK page.
-    urls = list(dict.fromkeys(urls))[:2]
+    urls = list(dict.fromkeys(urls))[:5]
     if not urls:
         raise RuntimeError("No official CBK Treasury bill auction-result PDFs were found.")
 
