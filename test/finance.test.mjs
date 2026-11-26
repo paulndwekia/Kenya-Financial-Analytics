@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   treasuryBillPrice,treasuryBillDiscountPrice,treasuryBillYield,treasuryBillDiscountRate,
   bondPrice,bondYtm,bondMetrics,rateDecimal,blackScholes,historicalVaR,parametricVaR,expectedShortfall,
-  classifyYieldCurve,yieldCurveSlopes,interpolateYield,portfolioMetrics,bondPriceShock,
+  classifyYieldCurve,yieldCurveSlopes,interpolateYield,simpleForwardRate,portfolioMetrics,bondPriceShock,
   treasuryBillReinvestmentShock,cbkRateScenarios
 } from "../lib/finance.mjs";
 
@@ -49,7 +49,18 @@ test("Yield-curve shape, slopes and interpolation use only supplied points",()=>
   assert.equal(classifyYieldCurve(rates),"UPWARD SLOPING");
   assert.ok(Math.abs(yieldCurveSlopes(rates)["91_to_182"]-.001)<1e-12);
   assert.ok(Math.abs(interpolateYield(136.5,rates)-.0875)<1e-12);
+  assert.equal(interpolateYield(60,rates),null);
+  assert.equal(interpolateYield(300,{91:.087,182:.088}),null);
   assert.equal(classifyYieldCurve({91:.087}),"INSUFFICIENT DATA");
+});
+test("simple forward rates use the Treasury bill investment-yield discount convention",()=>{
+  const startDays=91,endDays=182,spotStart=.08,knownForward=.10;
+  const t1=startDays/365,t2=endDays/365;
+  const d1=1/(1+spotStart*t1);
+  const d2=d1/(1+knownForward*(t2-t1));
+  const spotEnd=(1/d2-1)/t2;
+  assert.ok(Math.abs(simpleForwardRate(spotStart,spotEnd,startDays,endDays)-knownForward)<1e-12);
+  assert.throws(()=>simpleForwardRate(.08,.09,182,91),/greater than its start/i);
 });
 test("Portfolio measures calculate weighted return, concentration and diversification",()=>{
   const m=portfolioMetrics([
