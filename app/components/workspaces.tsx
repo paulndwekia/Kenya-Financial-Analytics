@@ -83,8 +83,8 @@ function Metric({label,value,note}:{label:string;value:string;note?:string}){
 function Panel({title,note,children,action}:{title:string;note?:string;children:ReactNode;action?:ReactNode}){
   return <section className="panel"><div className="panel-head"><div><div className="panel-title">{title}</div>{note&&<div className="panel-note">{note}</div>}</div>{action}</div>{children}</section>;
 }
-function ChartFrame({children,height=280}:{children:ReactNode;height?:number}){
-  return <div style={{width:"100%",height}}>{children}</div>;
+function ChartFrame({children,height=280,className}:{children:ReactNode;height?:number;className?:string}){
+  return <div className={className} style={{width:"100%",height}}>{children}</div>;
 }
 function NoData({message}:{message:string}){
   return <div className="empty-state">{message}</div>;
@@ -302,22 +302,22 @@ function BondPricing(){
     </Panel>
 
     <Panel title="Bond price across yield scenarios" note="Full revaluation of the model cash flows at a range of annual yields">
-      {valid?<ChartFrame height={280}><ResponsiveContainer><LineChart data={Array.from({length:26},(_,i)=>{const yieldRate=i/100;return {yield:(yieldRate*100).toFixed(1),price:bondPrice(f,c,yieldRate,t,n)};})}>
+      {valid?<ChartFrame height={260} className="bond-price-chart"><ResponsiveContainer><LineChart data={Array.from({length:26},(_,i)=>{const yieldRate=i/100;return {yield:(yieldRate*100).toFixed(1),price:bondPrice(f,c,yieldRate,t,n)};})} margin={{top:10,right:12,bottom:4,left:2}}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
         <XAxis dataKey="yield" tick={{fontSize:10,fill:"#8291a0"}} unit="%"/>
-        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={68}/>
-        <ChartTooltip/>
-        <Line dataKey="price" name="Bond price (KES)" stroke="#356bb3" strokeWidth={2.4} dot={false} activeDot={{r:4}}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={68} tickFormatter={value=>Number(value).toLocaleString("en-KE",{maximumFractionDigits:0})}/>
+        <Tooltip formatter={(value)=>money(Number(value))} labelFormatter={label=>"Yield to maturity: "+String(label)+"%"} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/>
+        <Line dataKey="price" name="Bond price" stroke="#356bb3" strokeWidth={2.4} dot={false} activeDot={{r:4}}/>
       </LineChart></ResponsiveContainer></ChartFrame>:<NoData message="Valid bond terms are required before drawing the price–yield relationship."/>}
       <p className="panel-note">The graph shows the inverse price–yield relationship for this bond's coupon and maturity. It reprices the cash flows at each point rather than applying the duration approximation.</p>
     </Panel>
     <Panel title="Coupon and redemption profile" note="Cash-flow size by payment period, with principal redemption included at maturity">
-      {valid?<ChartFrame height={250}><ResponsiveContainer><BarChart data={flows}>
+      {valid?<ChartFrame height={240} className="bond-cashflow-chart"><ResponsiveContainer><BarChart data={flows} margin={{top:8,right:12,bottom:4,left:2}}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
         <XAxis dataKey="period" tick={{fontSize:10,fill:"#8291a0"}}/>
-        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={68}/>
-        <ChartTooltip/>
-        <Bar dataKey="cash" name="Contractual cash flow (KES)" fill="#087f8c" radius={[4,4,0,0]}/>
+        <YAxis tick={{fontSize:10,fill:"#8291a0"}} width={68} tickFormatter={value=>Number(value).toLocaleString("en-KE",{maximumFractionDigits:0})}/>
+        <Tooltip formatter={(value)=>money(Number(value))} labelFormatter={label=>"Payment period: "+String(label)} contentStyle={{borderRadius:9,border:"1px solid #e4eaf0",fontSize:11,boxShadow:"0 8px 24px rgba(20,43,67,.08)"}}/>
+        <Bar dataKey="cash_flow" name="Contractual cash flow" fill="#087f8c" radius={[4,4,0,0]}/>
       </BarChart></ResponsiveContainer></ChartFrame>:<NoData message="Enter valid bond terms to generate the payment profile."/>}
     </Panel>
   </div>;
