@@ -332,7 +332,7 @@ function PortfolioIntelligence({data}:{data:MarketPayload}){
       <Table headers={["Pair",...PAIRS]} rows={PAIRS.map((pair,i)=>[pair,...correlations[i]])}/>
     </Panel>
     <Panel title="Risk and return profile" note="Historical cumulative change versus annualised realised volatility">
-      <ChartFrame height={300}><ResponsiveContainer><ScatterChart><CartesianGrid strokeDasharray="3 3" stroke="#e7edf2"/><XAxis type="number" dataKey="vol" name="Annualised volatility" unit="%" tick={{fontSize:10,fill:"#8291a0"}}/><YAxis type="number" dataKey="return" name="Cumulative change" unit="%" tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip cursor={{strokeDasharray:"3 3"}}/><Scatter data={summaries.map(x=>({pair:x.pair,vol:x.vol*100,return:x.total*100}))} fill="#087f8c"/></ScatterChart></ResponsiveContainer></ChartFrame>
+      <ChartFrame height={300}><ResponsiveContainer><ScatterChart><CartesianGrid strokeDasharray="3 3" stroke="#e7edf2"/><XAxis type="number" dataKey="vol" name="Annualised volatility" unit="%" tick={{fontSize:10,fill:"#8291a0"}}/><YAxis type="number" dataKey="return" name="Cumulative change" unit="%" tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Scatter data={summaries.map(x=>({pair:x.pair,vol:x.vol*100,return:x.total*100}))} fill="#087f8c"/></ScatterChart></ResponsiveContainer></ChartFrame>
     </Panel>
   </div>;
 }
