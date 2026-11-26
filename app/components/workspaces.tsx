@@ -200,21 +200,80 @@ function Dashboard({data,loading}:{data:MarketPayload|null;loading:boolean}){
 }
 function KenyanMarket({data}:{data:MarketPayload}){
   const [pair,setPair]=useState<string>("USD/KES");
-  const {rows,values,rets}=seriesFor(data.fx,pair);
-  const change=values.length>1?values.at(-1)!/values.at(-2)!-1:0;
+  const [window,setWindow]=useState("90D");
+  const allRows=seriesFor(data.fx,pair).rows;
+  const latest=allRows.at(-1);
+  const previous=allRows.at(-2);
+  const dailyChange=latest&&previous&&previous.value!==0?latest.value/previous.value-1:null;
+  const dailyAbsolute=latest&&previous?latest.value-previous.value:null;
+
+  const days=window==="30D"?30:window==="90D"?90:window==="180D"?180:window==="1Y"?365:null;
+  const cutoff=latest&&days?new Date(Date.parse(latest.date+"T00:00:00Z")-days*86400000).toISOString().slice(0,10):null;
+  const rows=allRows.filter(row=>!cutoff||row.date>=cutoff);
+  const values=rows.map(row=>row.value);
+  const rets=returns(values);
+  const periodStart=rows[0];
+  const periodChange=periodStart&&latest&&periodStart.value!==0?latest.value/periodStart.value-1:null;
+  const high=values.length?Math.max(...values):null;
+  const low=values.length?Math.min(...values):null;
+  const highDate=high===null?null:rows.find(row=>row.value===high)?.date||null;
+  const lowDate=low===null?null:rows.find(row=>row.value===low)?.date||null;
+  const recent=[...rows].slice(-12).reverse();
+  const recentRows=recent.map(row=>{
+    const index=allRows.findIndex(item=>item.date===row.date&&item.value===row.value);
+    const prior=index>0?allRows[index-1]:null;
+    const change=prior&&prior.value!==0?row.value/prior.value-1:null;
+    return [row.date,row.instrument,row.value.toFixed(4),change===null?"—":pct(change,3),row.source];
+  });
   const chart=rows.map(row=>({date:row.date,rate:row.value}));
-  return <div className="workspace-stack">
-    <Panel title="Exchange-rate history" note="Choose one pair to inspect its published CBK daily mean">
-      <div className="control-row"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(p=><option key={p}>{p}</option>)}</select></label><span className="panel-note">Source: Central Bank of Kenya</span></div>
-      <div className="metric-grid"><Metric label="Latest rate" value={values.length?values.at(-1)!.toFixed(4):"—"} note={rows.at(-1)?.date||"No stored observation"}/><Metric label="Daily change" value={values.length>1?pct(change):"—"} note={change>0?"Shilling weakened against pair":change<0?"Shilling strengthened against pair":"No previous observation"}/><Metric label="Annualised volatility" value={rets.length?pct(stdev(rets)*Math.sqrt(252)):"—"} note="Sample standard deviation of daily returns"/><Metric label="Maximum drawdown" value={values.length?pct(maxDrawdown(values)):"—"} note="Peak-to-trough movement in the stored rate series"/></div>
-      <ChartFrame height={320}><ResponsiveContainer><LineChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="date" tick={{fontSize:10,fill:"#8291a0"}} minTickGap={30}/><YAxis domain={["auto","auto"]} tick={{fontSize:10,fill:"#8291a0"}} width={54}/><ChartTooltip/><Line type="monotone" dataKey="rate" name="KES per unit" stroke="#087f8c" strokeWidth={2} dot={false} activeDot={{r:4}}/></LineChart></ResponsiveContainer></ChartFrame>
+  const rangeLabel=window==="ALL"?"All available history":window==="1Y"?"Last 12 months":"Last "+window.replace("D"," days");
+
+  return <div className="workspace-stack kenyan-market-workspace">
+    <Panel title="Currency-pair profile" note="A focused view of the selected CBK exchange-rate series">
+      <div className="market-detail-controls">
+        <label className="field"><span>Currency pair</span><select className="search" aria-label="Currency pair" value={pair} onChange={event=>setPair(event.target.value)}>{PAIRS.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+        <div className="market-range-group" role="group" aria-label="Observation window">
+          {["30D","90D","180D","1Y","ALL"].map(value=><button key={value} type="button" className={window===value?"active":""} aria-pressed={window===value} onClick={()=>setWindow(value)}>{value==="ALL"?"All":value}</button>)}
+        </div>
+      </div>
+      <div className="market-detail-metrics">
+        <Metric label="Latest CBK rate" value={latest?latest.value.toFixed(4):"—"} note={latest?.date||"No stored observation"}/>
+        <Metric label="Daily movement" value={dailyChange===null?"—":(dailyChange>0?"+":"")+pct(dailyChange,3)} note={dailyChange===null?"Previous observation unavailable":dailyChange>0?"KES weakened against this pair":dailyChange<0?"KES strengthened against this pair":"No change"}/>
+        <Metric label="Period movement" value={periodChange===null?"—":(periodChange>0?"+":"")+pct(periodChange,3)} note={periodStart?.date&&latest?.date?periodStart.date+" to "+latest.date:rangeLabel}/>
+        <Metric label="Annualised volatility" value={rets.length>1?pct(stdev(rets)*Math.sqrt(252)):"—"} note="Sample daily-return standard deviation × √252"/>
+        <Metric label="Maximum quote drawdown" value={values.length>1?pct(maxDrawdown(values)):"—"} note="Peak-to-trough decline in the quoted rate"/>
+      </div>
+      <div className="market-period-meta">
+        <span>{rangeLabel} · {rows.length.toLocaleString("en-KE")} observations</span>
+        <span>{periodStart?.date||"—"} to {latest?.date||"—"}</span>
+      </div>
     </Panel>
-    <Panel title="Recent observations" note="Newest published values first">
-      <Table headers={["Date","Pair","Rate","Publisher"]} rows={[...rows].slice(-30).reverse().map(row=>[row.date,row.instrument,row.value.toFixed(4),row.source])}/>
-    </Panel>
+
+    <div className="market-detail-grid">
+      <Panel title={pair+" rate history"} note="Kenyan shillings per one unit of foreign currency">
+        {chart.length>1?<ChartFrame height={320} className="market-detail-chart"><ResponsiveContainer><AreaChart data={chart} margin={{top:10,right:12,bottom:4,left:0}}>
+          <defs><linearGradient id="pairHistoryFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#087f8c" stopOpacity={.2}/><stop offset="95%" stopColor="#087f8c" stopOpacity={0}/></linearGradient></defs>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/>
+          <XAxis dataKey="date" minTickGap={24} tick={{fontSize:10,fill:"#8291a0"}} axisLine={false} tickLine={false}/>
+          <YAxis domain={["auto","auto"]} tick={{fontSize:10,fill:"#8291a0"}} width={60} tickFormatter={value=>Number(value).toFixed(1)}/>
+          <ChartTooltip/>
+          {high!==null&&<ReferenceLine y={high} stroke="#d5a43b" strokeDasharray="4 4" label={{value:"Period high",position:"insideTopRight",fontSize:9,fill:"#a27a24"}}/>}
+          <Area type="monotone" dataKey="rate" name="KES per unit" stroke="#087f8c" strokeWidth={2.2} fill="url(#pairHistoryFill)" activeDot={{r:4}}/>
+        </AreaChart></ResponsiveContainer></ChartFrame>:<NoData message="This pair has fewer than two observations in the selected window. Choose a longer period or wait for more published CBK records."/>}
+        <p className="panel-note">A rising quote means more KES are required to buy one unit of foreign currency. It indicates a weaker shilling; a falling quote indicates a firmer shilling.</p>
+      </Panel>
+
+      <Panel title="Recent CBK observations" note="Latest 12 records within the selected window">
+        {recentRows.length?<div className="market-recent-table"><Table headers={["Date","Pair","Rate","Daily move","Publisher"]} rows={recentRows}/></div>:<NoData message="No observations are available for this pair and window."/>}
+        <div className="market-range-extremes">
+          <div><span>Period high</span><strong>{high===null?"—":high.toFixed(4)}</strong><small>{highDate||"—"}</small></div>
+          <div><span>Period low</span><strong>{low===null?"—":low.toFixed(4)}</strong><small>{lowDate||"—"}</small></div>
+        </div>
+        <p className="panel-note">The drawdown statistic describes the exchange-rate quote path. It is not a loss calculation for a foreign-currency holder or a diversified investment portfolio.</p>
+      </Panel>
+    </div>
   </div>;
 }
-
 function MarketIntelligence({data}:{data:MarketPayload}){
   const rows=PAIRS.map(pair=>{
     const {rows,values,rets}=seriesFor(data.fx,pair);
