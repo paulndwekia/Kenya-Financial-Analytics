@@ -7,7 +7,7 @@ import {
   expectedShortfall, annualizedVolatility, sharpeRatio, sortinoRatio,
   yieldCurveSlopes, classifyYieldCurve, interpolateYield,
   bondPriceShock, treasuryBillReinvestmentShock, cbkRateScenarios,
-  curveScenario, portfolioMetrics
+  curveScenario, portfolioMetrics, applyShock
 } from "../../lib/finance.mjs";
 import { motion } from "motion/react";
 import {
@@ -37,9 +37,9 @@ export const MODULES = [
   {name:"Options & Greeks",group:"Quantitative tools",desc:"Price European options and measure their sensitivities.",icon:Zap,color:"#8064b2"},
   {name:"Backtesting",group:"Quantitative tools",desc:"Test a moving-average rule against historical FX observations.",icon:BarChart3,color:"#8064b2"},
   {name:"Risk Analysis",group:"Risk",desc:"Estimate historical FX VaR, expected shortfall and drawdown.",icon:Activity,color:"#c18a35"},
-  {name:"Risk Intelligence",group:"Risk",desc:"Assess historical variation in Treasury bill auction yields.",icon:ShieldCheck,color:"#c18a35"},
+  {name:"Risk Intelligence",group:"Risk",desc:"Compare realised volatility and drawdown across tracked currency pairs.",icon:ShieldCheck,color:"#c18a35"},
   {name:"Stress Testing",group:"Risk",desc:"Apply explicit shocks to capital and modelled bond values.",icon:Activity,color:"#c45151"},
-  {name:"Portfolio Intelligence",group:"Portfolio",desc:"Compare return and risk characteristics across FX series.",icon:BriefcaseBusiness,color:"#16835d"},
+  {name:"Portfolio Intelligence",group:"Portfolio",desc:"Model a Kenyan fixed-income allocation and inspect yield, concentration and risk.",icon:BriefcaseBusiness,color:"#16835d"},
   {name:"Portfolio",group:"Portfolio",desc:"Build a weighted currency basket from aligned observations.",icon:Wallet,color:"#16835d"},
   {name:"Historical Market Explorer",group:"Research",desc:"Filter, inspect and export the underlying market observations.",icon:Search,color:"#64748b"},
   {name:"Research Intelligence",group:"Research",desc:"Study moving averages and trend relationships in one FX series.",icon:BookOpen,color:"#64748b"},
@@ -313,11 +313,16 @@ function OptionsGreeks(){
 }
 
 function RiskAnalysis({data}:{data:MarketPayload}){
-  const [pair,setPair]=useState("USD/KES"),[capital,setCapital]=useState("1000000"),[confidence,setConfidence]=useState("95");
-  const {rows,values,rets}=seriesFor(data.fx,pair),q=1-Number(confidence)/100,tail=quantile(rets,q);
-  const varAmount=Math.max(0,-tail*Number(capital));
-  const tailReturns=rets.filter(x=>x<=tail),es=Math.max(0,-mean(tailReturns)*Number(capital));
-  const volatility=stdev(rets)*Math.sqrt(252);
+  const [pair,setPair]=useState("USD/KES"),[capital,setCapital]=useState("1000000"),[confidence,setConfidence]=useState("95"),[riskFree,setRiskFree]=useState("8.75");
+  const {rows,values,rets}=seriesFor(data.fx,pair);
+  const confidenceValue=Number(confidence)/100,exposure=Number(capital),rf=Number(riskFree)/100;
+  const valid=rets.length>=2&&Number.isFinite(exposure)&&exposure>0&&Number.isFinite(rf);
+  const historical=valid?historicalVaR(rets,exposure,confidenceValue):0;
+  const parametric=valid?parametricVaR(rets,exposure,confidenceValue):0;
+  const es=valid?expectedShortfall(rets,exposure,confidenceValue):0;
+  const volatility=valid?annualizedVolatility(rets):0;
+  const sharpe=valid?sharpeRatio(rets,rf):0;
+  const sortino=valid?sortinoRatio(rets):0;
   const lower=rets.length?Math.min(...rets):0,upper=rets.length?Math.max(...rets):0;
   const width=upper>lower?(upper-lower)/12:Math.max(Math.abs(lower)*0.1,0.000001);
   const bins=Array.from({length:12},(_,i)=>{
@@ -327,12 +332,12 @@ function RiskAnalysis({data}:{data:MarketPayload}){
   for(const value of rets){const idx=Math.max(0,Math.min(bins.length-1,Math.floor((value-lower)/width)));bins[idx].count++;}
   return <div className="workspace-stack">
     <Panel title="Historical FX risk" note="Loss estimates are based on the selected pair's observed daily percentage changes">
-      <div className="control-row"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label><Field label="Exposure value (KES)" value={capital} onChange={setCapital} min="1"/><label className="field"><span>Confidence level</span><select className="search" value={confidence} onChange={e=>setConfidence(e.target.value)}><option value="90">90%</option><option value="95">95%</option><option value="99">99%</option></select></label></div>
-      <div className="metric-grid"><Metric label={"Historical VaR · "+confidence+"%"} value={rets.length?money(varAmount):"—"} note="Empirical lower-tail loss estimate"/><Metric label="Expected shortfall" value={rets.length?money(es):"—"} note="Average loss in the selected tail"/><Metric label="Annualised volatility" value={rets.length?pct(volatility):"—"} note="Sample daily return volatility × √252"/><Metric label="Maximum drawdown" value={values.length?pct(maxDrawdown(values)):"—"} note="Observed peak-to-trough decline"/></div>
+      <div className="control-row"><label className="field"><span>Currency pair</span><select className="search" value={pair} onChange={e=>setPair(e.target.value)}>{PAIRS.map(x=><option key={x}>{x}</option>)}</select></label><Field label="Exposure value (KES)" value={capital} onChange={setCapital} min="1"/><Field label="Annual risk-free rate (%)" value={riskFree} onChange={setRiskFree} min="0" max="100"/><label className="field"><span>Confidence level</span><select className="search" value={confidence} onChange={e=>setConfidence(e.target.value)}><option value="90">90%</option><option value="95">95%</option><option value="99">99%</option></select></label></div>
+      <div className="metric-grid"><Metric label={"Historical VaR · "+confidence+"%"} value={valid?money(historical):"—"} note="Empirical lower-tail estimate"/><Metric label={"Parametric VaR · "+confidence+"%"} value={valid?money(parametric):"—"} note="Normal approximation"/><Metric label="Expected shortfall" value={valid?money(es):"—"} note="Mean of empirical tail losses"/><Metric label="Annualised volatility" value={valid?pct(volatility):"—"} note="Sample standard deviation × √252"/><Metric label="Sharpe ratio" value={valid?sharpe.toFixed(3):"—"} note="Uses the annual risk-free input"/><Metric label="Sortino ratio" value={valid?sortino.toFixed(3):"—"} note="Zero daily target return"/></div>
     </Panel>
     <Panel title="Daily return distribution" note={"Observed returns for "+pair+"; labels show actual sample-return intervals"}>
       {rets.length>=2?<ChartFrame height={280}><ResponsiveContainer><BarChart data={bins}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e7edf2"/><XAxis dataKey="label" tick={{fontSize:10,fill:"#8291a0"}}/><YAxis tick={{fontSize:10,fill:"#8291a0"}}/><ChartTooltip/><Bar dataKey="count" name="Observations" fill="#c18a35" radius={[3,3,0,0]}/></BarChart></ResponsiveContainer></ChartFrame>:<NoData message="At least three valid prices are needed to estimate historical returns."/>}
-      <p className="panel-note">VaR and expected shortfall use the empirical return sample. They do not guarantee a maximum loss; currency series are market proxies and not a diversified portfolio return history.</p>
+      <p className="panel-note">Historical VaR and expected shortfall use the empirical return sample; parametric VaR uses a normal approximation. These estimates do not guarantee a maximum loss. The selected currency series is a market proxy, not a diversified portfolio return history.</p>
     </Panel>
   </div>;
 }
