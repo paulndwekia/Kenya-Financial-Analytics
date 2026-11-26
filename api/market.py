@@ -29,14 +29,14 @@ def rows_from(path, table, select_sql, where_sql, order_sql):
             price = "COALESCE(price, value)" if {"price", "value"}.issubset(cols) else ("price" if "price" in cols else ("value" if "value" in cols else "NULL"))
             source = "source" if "source" in cols else "'Central Bank of Kenya'"
             date_expr = f"COALESCE(NULLIF(trade_date,''), date)" if {"trade_date", "date"}.issubset(cols) else (date_col or "NULL")
-            sql = f"SELECT DISTINCT {date_expr} AS date, {instrument} AS instrument, {price} AS value, {source} AS source FROM {table} WHERE {instrument} IN ('USD/KES','GBP/KES','EUR/KES') AND {price} IS NOT NULL ORDER BY date ASC"
+            sql = f"SELECT DISTINCT {date_expr} AS date, {instrument} AS instrument, {price} AS value, {source} AS source FROM {table} WHERE {instrument} IN ('USD/KES','GBP/KES','EUR/KES') AND {price} IS NOT NULL ORDER BY date ASC LIMIT 2000"
         else:
             tenor = "tenor_days" if "tenor_days" in cols else "NULL"
             rate_parts = [c for c in ("accepted_rate", "rate", "value") if c in cols]
             rate = "COALESCE(" + ", ".join(rate_parts) + ")" if len(rate_parts) > 1 else (rate_parts[0] if rate_parts else "NULL")
             source = "source" if "source" in cols else "'Central Bank of Kenya'"
             date_expr = f"COALESCE(NULLIF(auction_date,''), date)" if {"auction_date", "date"}.issubset(cols) else (date_col or "NULL")
-            sql = f"SELECT DISTINCT {date_expr} AS date, {tenor} AS tenor_days, {rate} AS rate, {source} AS source FROM {table} WHERE {tenor} IN (91,182,364) AND {rate} IS NOT NULL ORDER BY date ASC, tenor_days ASC"
+            sql = f"SELECT DISTINCT {date_expr} AS date, {tenor} AS tenor_days, {rate} AS rate, {source} AS source FROM {table} WHERE {tenor} IN (91,182,364) AND {rate} IS NOT NULL ORDER BY date ASC, tenor_days ASC LIMIT 2000"
         return [dict(row) for row in con.execute(sql).fetchall()]
     finally:
         con.close()
