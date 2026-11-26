@@ -446,10 +446,21 @@ function PortfolioIntelligence({data}:{data:MarketPayload}){
     const changes=rows.slice(1).map((row,i)=>row.rate-rows[i].rate);
     return stdev(changes);
   };
+  const historicalBillPriceVol=(tenor:number)=>{
+    const rows=data.bills.filter(row=>row.tenor_days===tenor).sort((x,y)=>x.date.localeCompare(y.date));
+    const priceMoves=rows.slice(1).map((row,i)=>{
+      const previous=rows[i];
+      const duration=(tenor/365)/(1+previous.rate*tenor/365);
+      return -duration*(row.rate-previous.rate);
+    });
+    const intervals=rows.slice(1).map((row,i)=>(new Date(row.date).getTime()-new Date(rows[i].date).getTime())/86400000).filter(days=>days>0);
+    const averageInterval=mean(intervals);
+    return averageInterval>0?stdev(priceMoves)*Math.sqrt(365/averageInterval):0;
+  };
   const positions=[
-    {id:"t91" as const,name:"91-Day Treasury Bill",value:Number(values.t91),latest:latestRate(91),expected:latestRate(91)?.rate??0,volatility:historicalYieldChangeVol(91),isTbill:true,tenor:91},
-    {id:"t182" as const,name:"182-Day Treasury Bill",value:Number(values.t182),latest:latestRate(182),expected:latestRate(182)?.rate??0,volatility:historicalYieldChangeVol(182),isTbill:true,tenor:182},
-    {id:"t364" as const,name:"364-Day Treasury Bill",value:Number(values.t364),latest:latestRate(364),expected:latestRate(364)?.rate??0,volatility:historicalYieldChangeVol(364),isTbill:true,tenor:364},
+    {id:"t91" as const,name:"91-Day Treasury Bill",value:Number(values.t91),latest:latestRate(91),expected:latestRate(91)?.rate??0,volatility:historicalBillPriceVol(91),isTbill:true,tenor:91},
+    {id:"t182" as const,name:"182-Day Treasury Bill",value:Number(values.t182),latest:latestRate(182),expected:latestRate(182)?.rate??0,volatility:historicalBillPriceVol(182),isTbill:true,tenor:182},
+    {id:"t364" as const,name:"364-Day Treasury Bill",value:Number(values.t364),latest:latestRate(364),expected:latestRate(364)?.rate??0,volatility:historicalBillPriceVol(364),isTbill:true,tenor:364},
     {id:"bond" as const,name:"Government Bond",value:Number(values.bond),latest:null,expected:Number(bondReturn)/100,volatility:Number(bondVol)/100,isTbill:false,tenor:0},
     {id:"cash" as const,name:"Cash",value:Number(values.cash),latest:null,expected:Number(cashReturn)/100,volatility:Number(cashVol)/100,isTbill:false,tenor:0},
   ];
@@ -470,7 +481,7 @@ function PortfolioIntelligence({data}:{data:MarketPayload}){
   const tbillWeight=total?tbillValue/total:0;
   const chart=alloc.map(row=>({asset:row.name,value:row.weight*100}));
   const riskRows=alloc.filter(row=>row.isTbill).map(row=>({
-    name:row.name,weight:row.weight,yield:row.latest?.rate??null,volatility:row.volatility,contribution:row.weight*row.volatility
+    name:row.name,weight:row.weight,yield:row.latest?.rate??null,volatility:historicalYieldChangeVol(row.tenor),priceVolatility:row.volatility,contribution:row.weight*row.volatility
   }));
   return <div className="workspace-stack">
     <Panel title="Fixed-income portfolio construction" note="Enter KES position values; Treasury bill expected yields link to the latest stored CBK auction result">
@@ -524,10 +535,10 @@ function PortfolioIntelligence({data}:{data:MarketPayload}){
       <p className="panel-note">{largest&&largest.weight>=.6?"Concentration is high: one position represents at least 60% of this portfolio.":largest&&largest.weight>=.4?"Concentration is moderate: the largest position represents between 40% and 60%.":"No single position exceeds 40% of the entered portfolio."} {tbillWeight>=.7?"The portfolio is heavily exposed to Treasury bills; reinvestment conditions and CBK auction rates may materially affect future returns.":tbillWeight>=.4?"Treasury bills form a significant portion of the allocation.":"Treasury bill exposure is below 40% of the entered portfolio."}</p>
     </Panel>
     <Panel title="Historical CBK risk contribution" note="Yield-change volatility is calculated from successive auction-rate differences">
-      {riskRows.length?<Table headers={["Treasury bill","Portfolio weight","Latest CBK yield","Historical yield-change volatility","Weighted contribution"]} rows={riskRows.map(row=>[
-        row.name,pct(row.weight),row.yield===null?"—":pct(row.yield,4),pct(row.volatility,4),pct(row.contribution,4)
+      {riskRows.length?<Table headers={["Treasury bill","Portfolio weight","Latest CBK yield","Yield-change volatility","Price-risk volatility proxy","Weighted contribution"]} rows={riskRows.map(row=>[
+        row.name,pct(row.weight),row.yield===null?"—":pct(row.yield,4),pct(row.volatility,4),pct(row.priceVolatility,4),pct(row.contribution,4)
       ])}/>:<NoData message="No Treasury bill positions have been entered. Add a bill position to display its historical CBK yield risk contribution."/>}
-      <p className="panel-note">Treasury bill risk contribution uses the standard deviation of historical yield changes, matching the retained CBK portfolio-intelligence module. It is not a total-return volatility estimate. Bond and cash volatility are user assumptions. Portfolio VaR uses an independent-position, normal approximation.</p>
+      <p className="panel-note">Treasury bill portfolio risk uses a duration-based price-change proxy derived from successive CBK auction-yield changes and the actual spacing between observations. The risk table also shows raw yield-change volatility, matching the retained CBK module. This is not a traded total-return series. Bond and cash volatility are user assumptions. Portfolio VaR uses an independent-position, normal approximation.</p>
     </Panel></>:null}
   </div>;
 }
