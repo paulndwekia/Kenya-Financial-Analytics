@@ -58,6 +58,11 @@ class FinancialReportTests(unittest.TestCase):
             self.assertIn("Market Research Report", core_properties)
             chart_files = [name for name in archive.namelist() if name.startswith("xl/charts/chart") and name.endswith(".xml")]
             self.assertGreaterEqual(len(chart_files), 2)
+            styles_xml = archive.read("xl/styles.xml").decode("utf-8")
+            self.assertIn("087F8C", styles_xml)
+            self.assertIn("356BB3", styles_xml)
+            self.assertIn("D5A43B", styles_xml)
+            self.assertIn("numFmt", styles_xml)
 
     def test_report_includes_all_historical_rows_in_history_sheets(self):
         output = build_workbook(self.fx, self.bills, self.refresh)
