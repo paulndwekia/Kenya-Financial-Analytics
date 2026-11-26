@@ -277,7 +277,7 @@ test("module controls change the calculations and data views", async ({ page }) 
   await page.getByLabel("Backtest mode").selectOption("Treasury bill yield momentum");
   await page.getByLabel("Yield-momentum lookback").fill("5");
   await expect(page.getByText("Strategy cumulative return", { exact: true })).toBeVisible();
-  await expect(page.locator(".recharts-line").first()).toBeVisible();
+  await expect(page.locator(".workspace-stack:visible .recharts-line:visible").first()).toBeVisible();
 
   // Stress Testing: input shocks update monetary P/L and invalid rates are safely rejected.
   await page.getByRole("button", { name: "Stress Testing", exact: true }).click();
