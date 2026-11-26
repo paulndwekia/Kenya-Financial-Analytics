@@ -229,6 +229,12 @@ test("risk, research and backtesting screens run their own calculations", async 
   await page.getByLabel("Cost per position change (basis points)").fill("2");
   await expect(page.getByText("Strategy cumulative return")).toBeVisible();
   await expect(page.getByText("Buy-and-hold return")).toBeVisible();
+
+  await page.getByLabel("Backtest mode").selectOption("Treasury bill yield momentum");
+  await page.getByLabel("Treasury bill tenor").selectOption("91");
+  await page.getByLabel("Yield-momentum lookback").fill("5");
+  await expect(page.getByText("Continuous exposure proxy")).toBeVisible();
+  await expect(page.getByText("The Treasury bill strategy is a simplified price-sensitivity proxy")).toBeVisible();
 });
 
 test("portfolio weights validate to 100 percent and the basket view updates", async ({ page }) => {
