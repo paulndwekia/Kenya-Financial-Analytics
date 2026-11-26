@@ -205,6 +205,17 @@ def write_observations(fx, bills, fx_error=None, bill_error=None):
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL is not configured.")
+    if not fx and not bills:
+        with psycopg.connect(database_url, connect_timeout=8, row_factory=dict_row) as conn:
+            conn.execute(
+                """
+                INSERT INTO data_refresh_runs
+                    (source, status, completed_at, fx_rows_upserted, bill_rows_upserted, details)
+                VALUES (%s, 'failed', now(), 0, 0, %s)
+                """,
+                (SOURCE, json.dumps({"fx_error": fx_error, "treasury_bill_error": bill_error})),
+            )
+        return {"fx_rows": 0, "bill_rows": 0, "status": "failed"}
     with psycopg.connect(database_url, connect_timeout=8, row_factory=dict_row) as conn:
         with conn.cursor() as cur:
             for row in fx:
@@ -280,7 +291,7 @@ class handler(BaseHTTPRequestHandler):
             bill_error = str(exc)[:200]
         try:
             result = write_observations(fx, bills, fx_error, bill_error)
-            status = 200 if result["status"] == "success" else 207
+            status = 200 if result["status"] == "success" else 503 if result["status"] == "failed" else 207
             payload = {"ok": result["status"] == "success", **result,
                        "fx_error": fx_error, "treasury_bill_error": bill_error}
         except Exception as exc:
