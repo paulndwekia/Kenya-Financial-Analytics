@@ -234,8 +234,10 @@ test("historical explorer filters and exports the displayed data", async ({ page
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toContain("kfa-fx-observations.csv");
   await page.locator(".filter-grid select").nth(0).selectOption("Treasury bills");
-  await page.locator(".filter-grid select").nth(2).selectOption("91");
-  await expect(page.getByText("91", { exact: true }).first()).to_be_visible();
+  await expect(page.getByLabel("Tenor")).to_be_visible();
+  await expect(page.getByLabel("Currency pair")).to_have_count(0);
+  await page.locator(".filter-grid select").nth(1).selectOption("91");
+  await expect(page.getByText("91 days", { exact: true }).first()).to_be_visible();
 });
 
 test("stress scenarios reject impossible values and recalculate valid shocks", async ({ page }) => {
