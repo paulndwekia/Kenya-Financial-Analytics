@@ -325,6 +325,15 @@ test("module controls change the calculations and data views", async ({ page }) 
   const priceBefore = await purchaseMetric.textContent();
   await page.getByLabel("Face value (KES)").fill("200000");
   await expect(purchaseMetric).not.toHaveText(priceBefore || "");
+  await expect(page.locator(".data-table").filter({ has: page.locator("th", { hasText: "Price basis" }) })).toContainText("CBK published");
+  const investmentPrice = await purchaseMetric.textContent();
+  await page.getByLabel("Pricing convention").selectOption("discount");
+  await expect(purchaseMetric).not.toHaveText(investmentPrice || "");
+  await expect(page.getByText("Equivalent discount rate", { exact: true })).toBeVisible();
+  await page.getByLabel("Pricing convention").selectOption("investment");
+  await page.getByLabel("Annual investment yield (%)").fill("120");
+  await expect(page.getByText(/quote rate from 0% to 100%/i)).toBeVisible();
+  await page.getByLabel("Annual investment yield (%)").fill("8.75");
   await page.setViewportSize({ width: 390, height: 844 });
   const kpiFits = await page.locator(".treasury-kpi-grid").evaluate(element => {
     const parent = element.getBoundingClientRect();
