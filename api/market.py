@@ -8,71 +8,62 @@ ROOT = Path(__file__).resolve().parent.parent
 APP_DB = ROOT / "kenya_financial_analytics.db"
 MARKET_DB = ROOT / "kenya_market.db"
 
-def rows_from(path, sql, params=()):
+def table_columns(con, table):
+    return {row[1] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+
+def rows_from(path, table, select_sql, where_sql, order_sql):
     if not path.exists():
         return []
     con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=5)
     con.row_factory = sqlite3.Row
     try:
-        return [dict(row) for row in con.execute(sql, params).fetchall()]
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if table not in tables:
+            return []
+        cols = table_columns(con, table)
+        if not cols:
+            return []
+        date_col = "trade_date" if table == "market_data" and "trade_date" in cols else ("auction_date" if "auction_date" in cols else ("date" if "date" in cols else None))
+        if table == "market_data":
+            instrument = "instrument" if "instrument" in cols else "''"
+            price = "COALESCE(price, value)" if {"price", "value"}.issubset(cols) else ("price" if "price" in cols else ("value" if "value" in cols else "NULL"))
+            source = "source" if "source" in cols else "'Central Bank of Kenya'"
+            date_expr = f"COALESCE(NULLIF(trade_date,''), date)" if {"trade_date", "date"}.issubset(cols) else (date_col or "NULL")
+            sql = f"SELECT {date_expr} AS date, {instrument} AS instrument, {price} AS value, {source} AS source FROM {table} WHERE {instrument} IN ('USD/KES','GBP/KES','EUR/KES') AND {price} IS NOT NULL ORDER BY date ASC"
+        else:
+            tenor = "tenor_days" if "tenor_days" in cols else "NULL"
+            rate_parts = [c for c in ("accepted_rate", "rate", "value") if c in cols]
+            rate = "COALESCE(" + ", ".join(rate_parts) + ")" if len(rate_parts) > 1 else (rate_parts[0] if rate_parts else "NULL")
+            source = "source" if "source" in cols else "'Central Bank of Kenya'"
+            date_expr = f"COALESCE(NULLIF(auction_date,''), date)" if {"auction_date", "date"}.issubset(cols) else (date_col or "NULL")
+            sql = f"SELECT {date_expr} AS date, {tenor} AS tenor_days, {rate} AS rate, {source} AS source FROM {table} WHERE {tenor} IN (91,182,364) AND {rate} IS NOT NULL ORDER BY date ASC, tenor_days ASC"
+        return [dict(row) for row in con.execute(sql).fetchall()]
     finally:
         con.close()
 
 def get_market_data():
-    fx, bills = [], []
-    errors = []
+    warnings = []
     try:
-        fx = rows_from(APP_DB, """
-            SELECT COALESCE(NULLIF(trade_date,''), date) AS date,
-                   instrument,
-                   COALESCE(price, value) AS value,
-                   COALESCE(source, 'Central Bank of Kenya') AS source
-            FROM market_data
-            WHERE instrument IN ('USD/KES','GBP/KES','EUR/KES')
-              AND COALESCE(NULLIF(trade_date,''), date) IS NOT NULL
-              AND COALESCE(price, value) IS NOT NULL
-            ORDER BY date ASC
-        """)
+        fx = rows_from(APP_DB, "market_data", None, None, None)
     except Exception as exc:
-        errors.append("FX store: " + str(exc)[:180])
+        fx = []
+        warnings.append("FX data store: " + str(exc)[:160])
     try:
-        bills = rows_from(APP_DB, """
-            SELECT COALESCE(NULLIF(auction_date,''), date) AS date,
-                   tenor_days,
-                   COALESCE(accepted_rate, rate, value) AS rate,
-                   COALESCE(source, 'Central Bank of Kenya') AS source
-            FROM treasury_bills
-            WHERE tenor_days IN (91,182,364)
-              AND COALESCE(accepted_rate, rate, value) IS NOT NULL
-            ORDER BY date ASC, tenor_days ASC
-        """)
+        bills = rows_from(APP_DB, "treasury_bills", None, None, None)
     except Exception as exc:
-        errors.append("Treasury bill store: " + str(exc)[:180])
+        bills = []
+        warnings.append("Treasury bill store: " + str(exc)[:160])
     if not bills:
         try:
-            bills = rows_from(MARKET_DB, """
-                SELECT auction_date AS date, tenor_days, rate,
-                       COALESCE(source, 'Central Bank of Kenya') AS source
-                FROM treasury_bill_rates
-                WHERE tenor_days IN (91,182,364) AND rate IS NOT NULL
-                ORDER BY auction_date ASC, tenor_days ASC
-            """)
+            bills = rows_from(MARKET_DB, "treasury_bill_rates", None, None, None)
         except Exception as exc:
-            errors.append("CBK market store: " + str(exc)[:180])
-    fx_rows = len(fx)
-    bill_rows = len(bills)
+            warnings.append("CBK market store: " + str(exc)[:160])
     return {
-        "ok": bool(fx_rows or bill_rows),
-        "fx": fx,
-        "bills": bills,
+        "ok": bool(fx or bills), "fx": fx, "bills": bills,
         "source": "Central Bank of Kenya",
         "retrieved_at": datetime.now(timezone.utc).isoformat(),
-        "health": {
-            "fx_rows": fx_rows,
-            "bills_rows": bill_rows,
-            "database": "read-only bundled SQLite snapshot",
-            "warnings": errors
-        }
+        "health": {"fx_rows": len(fx), "bills_rows": len(bills),
+                   "database": "read-only bundled SQLite snapshot", "warnings": warnings}
     }
 
 class handler(BaseHTTPRequestHandler):
@@ -84,7 +75,7 @@ class handler(BaseHTTPRequestHandler):
             payload = json.dumps(get_market_data(), default=str).encode("utf-8")
             self.send_response(200)
         except Exception as exc:
-            payload = json.dumps({"ok": False, "error": str(exc)[:200], "fx": [], "bills": [], "health": {"fx_rows": 0, "bills_rows": 0}}).encode("utf-8")
+            payload = json.dumps({"ok": False, "error": str(exc)[:200], "fx": [], "bills": [], "health": {"fx_rows": 0, "bills_rows": 0, "warnings": []}}).encode("utf-8")
             self.send_response(500)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "s-maxage=300, stale-while-revalidate=900")
