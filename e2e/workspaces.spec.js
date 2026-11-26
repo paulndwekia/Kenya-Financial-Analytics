@@ -109,7 +109,8 @@ test("all 16 workspaces are distinct and sidebar navigation reaches each module"
 });
 
 test("module URLs work directly and browser back/forward restores the previous workspace", async ({ page }) => {
-  await page.goto("/?module=Bond%20Pricing");
+  await page.goto("/");
+  await page.locator("aside .nav-item").filter({ hasText: "Bond Pricing" }).click();
   await expect(page.locator(".page-title")).to_have_text("Bond Pricing");
   await page.locator("aside .nav-item").filter({ hasText: "Options & Greeks" }).click();
   await expect(page.locator(".page-title")).to_have_text("Options & Greeks");
@@ -119,6 +120,38 @@ test("module URLs work directly and browser back/forward restores the previous w
   await expect(page.locator(".page-title")).to_have_text("Market overview");
   await page.goForward();
   await expect(page.locator(".page-title")).to_have_text("Bond Pricing");
+  await page.goto("/?module=Bond%20Pricing");
+  await expect(page.locator(".page-title")).to_have_text("Bond Pricing");
+});
+
+test("market intelligence, curve shape, and auction risk have different outputs", async ({ page }) => {
+  await page.goto("/?module=Market%20Intelligence");
+  await expect(page.getByText("Currency comparison")).to_be_visible();
+  await expect(page.getByText("Daily percentage move")).to_be_visible();
+
+  await page.goto("/?module=Yield%20Curve");
+  await expect(page.getByText("Latest recorded auction curve")).to_be_visible();
+  await expect(page.getByText("364s–91s spread")).to_be_visible();
+  await expect(page.getByText("Curve history")).to_be_visible();
+
+  await page.goto("/?module=Risk%20Intelligence");
+  await expect(page.getByText("Treasury yield risk overview")).to_be_visible();
+  await expect(page.getByText("91-day interpretation")).to_be_visible();
+});
+
+test("portfolio intelligence and financial reports expose distinct comparisons and exports", async ({ page }) => {
+  await page.goto("/?module=Portfolio%20Intelligence");
+  await expect(page.getByText("Relative performance")).to_be_visible();
+  await expect(page.getByText("Daily-return correlation")).to_be_visible();
+  await expect(page.getByText("Risk and return profile")).to_be_visible();
+
+  await page.goto("/?module=Financial%20Reports");
+  await expect(page.getByText("Market research report")).to_be_visible();
+  await expect(page.getByText("Latest Treasury bill auction snapshot")).to_be_visible();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download report CSV" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("kenya-financial-analytics-report.csv");
 });
 
 test("mobile navigation opens, selects a module and closes", async ({ page }) => {
