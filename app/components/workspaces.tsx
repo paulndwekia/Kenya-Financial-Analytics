@@ -285,7 +285,7 @@ function BondPricing(){
   const sensitivityValid=!!sensitivity&&Number.isFinite(shockedPrice)&&shockedPrice>0;
   return <div className="workspace-stack">
     <Panel title="Fixed-rate bond valuation" note="Periodic coupon discounting with the original annual, semi-annual and quarterly payment frequencies">
-      <div className="metric-grid"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual coupon rate (%)" value={coupon} onChange={setCoupon} min="0" max="100"/><Field label="Yield to maturity (%)" value={ytm} onChange={setYtm} min="-99"/><Field label="Years to maturity" value={years} onChange={setYears} min="0.01" max="100"/><label className="field"><span>Payments per year</span><select className="search" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="1">Annual</option><option value="2">Semi-annual</option><option value="4">Quarterly</option></select></label></div>
+      <div className="metric-grid"><Field label="Face value (KES)" value={face} onChange={setFace} min="1"/><Field label="Annual coupon rate (%)" value={coupon} onChange={setCoupon} min="0" max="100"/><Field label="Yield to maturity (%)" value={ytm} onChange={setYtm} min="-99" max="100"/><Field label="Years to maturity" value={years} onChange={setYears} min="0.01" max="100"/><label className="field"><span>Payments per year</span><select className="search" value={frequency} onChange={e=>setFrequency(e.target.value)}><option value="1">Annual</option><option value="2">Semi-annual</option><option value="4">Quarterly</option></select></label></div>
       {valid?<div className="metric-grid"><Metric label="Model bond price" value={money(price)} note={price>f?"Premium to par":price<f?"Discount to par":"At par"}/><Metric label="Macaulay duration" value={macaulay.toFixed(4)+" years"}/><Metric label="Modified duration" value={modified.toFixed(4)}/><Metric label="Convexity" value={convexity.toFixed(4)}/></div>:<NoData message="Enter finite, valid face value, coupon, yield, maturity and payment frequency values."/>}
       <p className="panel-note">This is a periodic fixed-coupon model. Accrued interest, settlement date, day-count, embedded options, taxes and transaction costs are not included.</p>
     </Panel>
@@ -330,7 +330,7 @@ function OptionsGreeks(){
   const greeks=valid?blackScholes({spot:S,strike:K,time:T,rate:r,volatility:sigma,type:kind as "Call"|"Put"}):null;
   const price=greeks?.price||0,delta=greeks?.delta||0,gamma=greeks?.gamma||0,vega=greeks?.vega||0,theta=greeks?.theta||0,rho=greeks?.rho||0;
   return <div className="workspace-stack">
-    <Panel title="Black–Scholes model" note="European option; continuous risk-free rate, no dividends or transaction costs" action={<select className="search" value={kind} onChange={e=>setKind(e.target.value)}><option>Call</option><option>Put</option></select>}>
+    <Panel title="Black–Scholes model" note="European option; continuous risk-free rate, no dividends or transaction costs" action={<select className="search" aria-label="Option type" value={kind} onChange={e=>setKind(e.target.value)}><option>Call</option><option>Put</option></select>}>
       <div className="metric-grid"><Field label="Underlying price" value={spot} onChange={setSpot} min="0.01"/><Field label="Strike price" value={strike} onChange={setStrike} min="0.01"/><Field label="Time to expiry (years)" value={maturity} onChange={setMaturity} min="0.001" max="100"/><Field label="Risk-free rate (%)" value={riskFree} onChange={setRiskFree} min="-100" max="100"/><Field label="Volatility (%)" value={volatility} onChange={setVolatility} min="0.01" max="500"/></div>
       {valid?<div className="metric-grid"><Metric label={kind+" model value"} value={price.toFixed(6)}/><Metric label="Delta" value={delta.toFixed(5)}/><Metric label="Gamma" value={gamma.toFixed(6)}/><Metric label="Vega / 1 vol point" value={vega.toFixed(5)}/><Metric label="Theta / day" value={theta.toFixed(6)}/><Metric label="Rho / 1 rate point" value={rho.toFixed(5)}/></div>:<NoData message="Enter positive spot and strike, time to expiry up to 100 years, volatility above 0% and no greater than 500%, and a risk-free rate from −100% to 100%."/>}
     </Panel>
@@ -764,10 +764,15 @@ function FinancialReports({data}:{data:MarketPayload}){
     ...fx.map(x=>["FX",x.pair,x.rows.at(-1)?.date||"",x.latest??"",x.change,x.vol,x.rows.length,x.rows.at(-1)?.source||"",x.rows.at(-1)?.source_url||""]),
     ...latestBills.map(row=>["Treasury bill",row.tenor_days+" days",row.date,row.rate,"","",data.bills.filter(x=>x.tenor_days===row.tenor_days).length,row.source,row.source_url||""])
   ];
-  const detailedCsvRows=[
-    ...data.fx.map(row=>["FX",row.date,row.instrument,"",row.value,"","","","","",row.source,row.source_url||""]),
-    ...data.bills.map(row=>["Treasury bill",row.date,"",row.tenor_days,row.rate,row.price??(100/(1+row.rate*row.tenor_days/365)),"",row.issue_number||"",row.amount_offered??"",row.amount_accepted??"",row.source,row.source_url||""])
-  ].sort((a,b)=>String(a[1]).localeCompare(String(b[1]))||String(a[0]).localeCompare(String(b[0]))||String(a[2]||a[3]).localeCompare(String(b[2]||b[3])));
+  const previousFxRate=new Map<string,number>();
+  const fxHistoryRows=[...data.fx].sort((a,b)=>a.date.localeCompare(b.date)||a.instrument.localeCompare(b.instrument)).map(row=>{
+    const previous=previousFxRate.get(row.instrument);
+    const dailyChange=previous!==undefined&&previous!==0?row.value/previous-1:"";
+    previousFxRate.set(row.instrument,row.value);
+    return ["FX",row.date,row.instrument,"",row.value,"",dailyChange,"","","",row.source,row.source_url||""];
+  });
+  const billHistoryRows=data.bills.map(row=>["Treasury bill",row.date,"",row.tenor_days,row.rate,row.price??(100/(1+row.rate*row.tenor_days/365)),"",row.issue_number||"",row.amount_offered??"",row.amount_accepted??"",row.source,row.source_url||""]);
+  const detailedCsvRows=[...fxHistoryRows,...billHistoryRows].sort((a,b)=>String(a[1]).localeCompare(String(b[1]))||String(a[0]).localeCompare(String(b[0]))||String(a[2]||a[3]).localeCompare(String(b[2]||b[3])));
   const summaryHeaders=["Record type","Instrument","Latest observation date","Latest rate / yield (decimal)","Cumulative FX change (decimal)","Annualised FX volatility (decimal)","Observations","Published source","Source URL"];
   const detailedHeaders=["Record type","Observation date","Currency pair","Tenor (days)","Rate / accepted yield (decimal)","Price per KES 100","Daily FX change (decimal)","Issue number","Amount offered (KES)","Amount accepted (KES)","Published source","Source URL"];
   return <div className="workspace-stack">
