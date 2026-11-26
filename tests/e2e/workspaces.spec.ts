@@ -148,3 +148,44 @@ test("the mobile drawer closes after choosing a workspace", async ({ page }) => 
   await expect(page.locator(".page-title")).toHaveText("Financial Reports");
   await expect(page.locator(".sidebar")).not.toHaveClass(/open/);
 });
+
+
+test("Historical Market Explorer keeps its controls and graph compact", async ({ page }) => {
+  await mockMarketApi(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Historical Market Explorer", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Historical market explorer" })).toBeVisible();
+  await expect(page.getByLabel("Dataset")).toBeVisible();
+  await expect(page.getByLabel("Currency pair")).toBeVisible();
+  await expect(page.getByLabel("From date")).toBeVisible();
+  await expect(page.getByLabel("To date")).toBeVisible();
+  await expect(page.getByPlaceholder("Type to filter")).toBeVisible();
+  await expect(page.locator(".explorer-chart-panel .recharts-surface")).toBeVisible();
+  await expect(page.locator(".explorer-records-panel .data-table tbody tr").first()).toBeVisible();
+
+  const desktopLayout = await page.locator(".explorer-results-grid").evaluate(element => {
+    const chart = element.querySelector(".explorer-chart-panel")!.getBoundingClientRect();
+    const records = element.querySelector(".explorer-records-panel")!.getBoundingClientRect();
+    const table = element.querySelector(".explorer-table-wrap")!;
+    const style = getComputedStyle(table);
+    return {
+      sideBySide: records.left >= chart.right - 2,
+      contained: style.overflowY === "auto" && style.maxHeight !== "none",
+    };
+  });
+  expect(desktopLayout.sideBySide).toBe(true);
+  expect(desktopLayout.contained).toBe(true);
+
+  await page.getByLabel("Currency pair").selectOption("USD/KES");
+  await expect(page.locator(".explorer-result-meta")).toContainText("100 records");
+  await page.getByRole("button", { name: "Reset filters" }).click();
+  await expect(page.getByLabel("Currency pair")).toHaveValue("All");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByRole("tab", { name: "Chart" })).toBeVisible();
+  await expect(page.locator(".explorer-chart-panel")).toBeVisible();
+  await page.getByRole("tab", { name: /Records/ }).click();
+  await expect(page.locator(".explorer-records-panel")).toBeVisible();
+  await expect(page.locator(".explorer-chart-panel")).not.toBeVisible();
+});
