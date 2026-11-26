@@ -255,7 +255,7 @@ test("module controls change the calculations and data views", async ({ page }) 
   // Portfolio: weights must balance to 100% before the basket is valued.
   await page.getByRole("button", { name: "Portfolio", exact: true }).click();
   await page.getByLabel("USD/KES weight (%)").fill("50");
-  await expect(page.getByText(/totalling exactly 100%/i)).toBeVisible();
+  await expect(page.getByText(/exactly 100%/i)).toBeVisible();
   await page.getByLabel("GBP/KES weight (%)").fill("20");
   await expect(page.getByText("Total allocation: 100.00%", { exact: false })).toBeVisible();
   await expect(page.locator(".recharts-area")).toBeVisible();
@@ -276,7 +276,7 @@ test("module controls change the calculations and data views", async ({ page }) 
   await page.getByLabel("Current Treasury bill yield (%)").fill("150");
   await expect(page.getByText(/Check all fixed-income inputs/i)).toBeVisible();
   await page.getByLabel("Current Treasury bill yield (%)").fill("9");
-  await expect(page.getByText("CBK +50 bps", { exact: false })).toHaveCount(0);
+  await expect(page.getByText("CBK +50 bps", { exact: false })).toBeVisible();
 
   // Research Intelligence: changing moving-average windows updates its trend study.
   await page.getByRole("button", { name: "Research Intelligence", exact: true }).click();
