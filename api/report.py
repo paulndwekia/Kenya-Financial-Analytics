@@ -1,5 +1,6 @@
 import io
 import json
+import math
 import os
 from datetime import date, datetime, time, timezone
 from http.server import BaseHTTPRequestHandler
@@ -41,6 +42,30 @@ def max_drawdown(levels):
     return worst
 
 
+def median(values):
+    if not values:
+        return None
+    ordered = sorted(float(value) for value in values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def historical_tail_metrics(daily_changes):
+    """Nearest-rank 5th percentile and average worst 5% of observed daily quote changes.
+
+    These are available only with at least 20 observations. They describe the
+    FX quote sample, not portfolio VaR or an investor's expected loss.
+    """
+    if len(daily_changes) < 20:
+        return None, None
+    ordered = sorted(float(value) for value in daily_changes)
+    tail_count = max(1, math.ceil(len(ordered) * 0.05))
+    tail = ordered[:tail_count]
+    return ordered[tail_count - 1], sum(tail) / len(tail)
+
+
 def as_date(value):
     if isinstance(value, date):
         return value
@@ -54,20 +79,40 @@ def load_report_data():
     with psycopg.connect(database_url, connect_timeout=8, row_factory=dict_row) as conn:
         fx = conn.execute(
             """
+            WITH ranked_fx AS (
+                SELECT observation_date, instrument, rate, source, source_url, imported_at,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY instrument
+                           ORDER BY observation_date DESC
+                       ) AS row_number
+                FROM fx_observations
+                WHERE instrument IN ('USD/KES', 'GBP/KES', 'EUR/KES')
+            )
             SELECT observation_date, instrument, rate, source, source_url, imported_at
-            FROM fx_observations
+            FROM ranked_fx
+            WHERE row_number <= 2000
             ORDER BY observation_date, instrument
-            LIMIT 2000
             """
         ).fetchall()
         bills = conn.execute(
             """
+            WITH ranked_bills AS (
+                SELECT auction_date, tenor_days, accepted_rate, price,
+                       amount_offered, amount_accepted, issue_number,
+                       source, source_url, imported_at,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY tenor_days
+                           ORDER BY auction_date DESC
+                       ) AS row_number
+                FROM treasury_bill_observations
+                WHERE tenor_days IN (91, 182, 364)
+            )
             SELECT auction_date, tenor_days, accepted_rate, price,
                    amount_offered, amount_accepted, issue_number,
                    source, source_url, imported_at
-            FROM treasury_bill_observations
+            FROM ranked_bills
+            WHERE row_number <= 2000
             ORDER BY auction_date, tenor_days
-            LIMIT 2000
             """
         ).fetchall()
         refreshes = conn.execute(
@@ -149,20 +194,36 @@ def build_workbook(fx, bills, refresh):
     }
     fx_stats = []
     for pair in pairs:
-        rows = by_pair[pair]
+        rows = sorted(by_pair[pair], key=lambda row: as_date(row["observation_date"]))
         levels = [float(row["rate"]) for row in rows]
-        daily_returns = [
-            levels[i] / levels[i - 1] - 1
-            for i in range(1, len(levels)) if levels[i - 1]
-        ]
+        daily_changes = []
+        for index in range(1, len(rows)):
+            previous = levels[index - 1]
+            if previous:
+                daily_changes.append({
+                    "date": as_date(rows[index]["observation_date"]),
+                    "value": levels[index] / previous - 1,
+                })
+        daily_returns = [item["value"] for item in daily_changes]
+        lower_tail, average_worst_tail = historical_tail_metrics(daily_returns)
+        best_day = max(daily_changes, key=lambda item: item["value"]) if daily_changes else None
+        worst_day = min(daily_changes, key=lambda item: item["value"]) if daily_changes else None
         fx_stats.append({
             "pair": pair,
             "first_date": as_date(rows[0]["observation_date"]) if rows else None,
             "latest_date": as_date(rows[-1]["observation_date"]) if rows else None,
             "latest": levels[-1] if levels else None,
             "change": levels[-1] / levels[0] - 1 if len(levels) > 1 and levels[0] else None,
+            "mean_daily_change": sum(daily_returns) / len(daily_returns) if daily_returns else None,
             "volatility": sample_std(daily_returns) * (252 ** 0.5) if len(daily_returns) > 1 else None,
             "drawdown": max_drawdown(levels) if levels else None,
+            "best_daily_change": best_day["value"] if best_day else None,
+            "best_daily_date": best_day["date"] if best_day else None,
+            "worst_daily_change": worst_day["value"] if worst_day else None,
+            "worst_daily_date": worst_day["date"] if worst_day else None,
+            "lower_tail_5pct": lower_tail,
+            "average_worst_5pct": average_worst_tail,
+            "daily_observations": len(daily_returns),
             "observations": len(rows),
         })
 
@@ -172,6 +233,70 @@ def build_workbook(fx, bills, refresh):
         row for row in bills
         if latest_bill_date and as_date(row["auction_date"]) == latest_bill_date
     ]
+
+    tenor_stats = []
+    for tenor in (91, 182, 364):
+        rows = sorted(
+            [row for row in bills if int(row["tenor_days"]) == tenor],
+            key=lambda row: as_date(row["auction_date"]),
+        )
+        yields = [float(row["accepted_rate"]) for row in rows]
+        latest = rows[-1] if rows else None
+        previous = rows[-2] if len(rows) > 1 else None
+        amount_rows = [
+            row for row in rows
+            if row["amount_offered"] is not None
+            and row["amount_accepted"] is not None
+            and float(row["amount_offered"]) > 0
+        ]
+        total_offered = sum(float(row["amount_offered"]) for row in amount_rows)
+        total_accepted = sum(float(row["amount_accepted"]) for row in amount_rows)
+        latest_price = None
+        if latest:
+            latest_rate = float(latest["accepted_rate"])
+            latest_price = (
+                float(latest["price"])
+                if latest["price"] is not None
+                else 100 / (1 + latest_rate * tenor / 365)
+            )
+        tenor_stats.append({
+            "tenor": tenor,
+            "observations": len(rows),
+            "first_date": as_date(rows[0]["auction_date"]) if rows else None,
+            "latest_date": as_date(latest["auction_date"]) if latest else None,
+            "latest_yield": float(latest["accepted_rate"]) if latest else None,
+            "previous_yield": float(previous["accepted_rate"]) if previous else None,
+            "change_vs_previous": (
+                float(latest["accepted_rate"]) - float(previous["accepted_rate"])
+                if latest and previous else None
+            ),
+            "mean_yield": sum(yields) / len(yields) if yields else None,
+            "median_yield": median(yields),
+            "minimum_yield": min(yields) if yields else None,
+            "maximum_yield": max(yields) if yields else None,
+            "latest_price": latest_price,
+            "latest_issue": latest["issue_number"] if latest else None,
+            "total_offered": total_offered if amount_rows else None,
+            "total_accepted": total_accepted if amount_rows else None,
+            "accepted_offered_ratio": total_accepted / total_offered if total_offered else None,
+        })
+
+    latest_curve = {
+        int(row["tenor_days"]): float(row["accepted_rate"])
+        for row in latest_bills
+    }
+    curve_spread = (
+        latest_curve[364] - latest_curve[91]
+        if 91 in latest_curve and 364 in latest_curve else None
+    )
+    if curve_spread is None:
+        curve_reading = "Not available: both 91-day and 364-day observations are required on the same auction date."
+    elif curve_spread > 0.0000001:
+        curve_reading = "Upward slope: the 364-day accepted yield is above the 91-day yield."
+    elif curve_spread < -0.0000001:
+        curve_reading = "Downward slope: the 364-day accepted yield is below the 91-day yield."
+    else:
+        curve_reading = "Approximately flat: the 91-day and 364-day accepted yields are very close."
     retrieved_at = datetime.now(timezone.utc).replace(tzinfo=None)
     status = (refresh or {}).get("status", "No import recorded")
     source = (refresh or {}).get("source", "Not recorded")
@@ -353,6 +478,328 @@ def build_workbook(fx, bills, refresh):
     if bills:
         summary.insert_chart("J21", bill_chart, {"x_offset": 6, "y_offset": 3})
 
+
+    # Detailed FX analytics, with the quote convention and sample limitations visible.
+    analysis_header = workbook.add_format({
+        "bold": True, "font_color": WHITE, "bg_color": NAVY,
+        "font_size": 9, "text_wrap": True, "valign": "vcenter",
+        "bottom": 2, "bottom_color": TEAL,
+    })
+    analysis_title = workbook.add_format({
+        "bold": True, "font_name": "Aptos Display", "font_size": 18,
+        "font_color": WHITE, "bg_color": NAVY, "valign": "vcenter",
+    })
+    analysis_note = workbook.add_format({
+        "font_color": MUTED, "font_size": 9, "text_wrap": True,
+        "bg_color": PALE_BLUE, "valign": "top",
+    })
+    analysis_text = workbook.add_format({
+        "font_color": INK, "font_size": 9, "text_wrap": True, "valign": "top",
+    })
+    analysis_label = workbook.add_format({
+        "bold": True, "font_color": MUTED, "font_size": 9,
+        "text_wrap": True, "valign": "top",
+    })
+    analysis_percent = workbook.add_format({
+        "font_color": INK, "font_size": 9,
+        "num_format": "0.00%;[Red](0.00%);-",
+    })
+    analysis_yield = workbook.add_format({
+        "font_color": INK, "font_size": 9,
+        "num_format": "0.0000%;[Red](0.0000%);-",
+    })
+    analysis_number = workbook.add_format({
+        "font_color": INK, "font_size": 9,
+        "num_format": '#,##0.0000;[Red](#,##0.0000);-',
+    })
+    analysis_integer = workbook.add_format({
+        "font_color": INK, "font_size": 9,
+        "num_format": '#,##0;[Red](#,##0);-',
+    })
+    analysis_money = workbook.add_format({
+        "font_color": INK, "font_size": 9,
+        "num_format": '"KES " #,##0.00;[Red]("KES " #,##0.00);-',
+    })
+
+    fx_analytics = workbook.add_worksheet("FX Analytics")
+    fx_analytics.hide_gridlines(2)
+    fx_analytics.set_tab_color(BLUE)
+    fx_analytics.freeze_panes(3, 0)
+    fx_analytics.set_landscape()
+    fx_analytics.fit_to_pages(1, 0)
+    fx_analytics.set_column("A:A", 14)
+    fx_analytics.set_column("B:C", 14)
+    fx_analytics.set_column("D:D", 19)
+    fx_analytics.set_column("E:I", 19)
+    fx_analytics.set_column("J:J", 15)
+    fx_analytics.set_column("K:K", 19)
+    fx_analytics.set_column("L:L", 15)
+    fx_analytics.set_column("M:N", 23)
+    fx_analytics.set_column("O:P", 15)
+    fx_analytics.merge_range("A1:P1", "FOREIGN-EXCHANGE PERFORMANCE & RISK ANALYSIS", analysis_title)
+    fx_analytics.merge_range(
+        "A2:P2",
+        "All changes use the stored KES-per-foreign-currency-unit quote. Pair histories can have different start and end dates; comparisons are descriptive, not forecasts.",
+        analysis_note,
+    )
+    fx_headers = [
+        "Currency pair", "First observation", "Latest observation",
+        "Latest quote (KES / unit)", "Cumulative quote change",
+        "Mean daily quote change", "Annualised historical volatility",
+        "Maximum drawdown in quote level", "Best daily quote change", "Best day",
+        "Worst daily quote change", "Worst day",
+        "5th percentile daily quote change",
+        "Average of worst 5% daily changes",
+        "Daily changes", "Rate observations",
+    ]
+    fx_analytics.write_row(2, 0, fx_headers, analysis_header)
+    for row_index, stat in enumerate(fx_stats, start=3):
+        fx_analytics.write(row_index, 0, stat["pair"], fmt["body"])
+        for column, key in ((1, "first_date"), (2, "latest_date")):
+            value = stat[key]
+            if value:
+                fx_analytics.write_datetime(row_index, column, datetime.combine(value, time.min), fmt["date"])
+            else:
+                fx_analytics.write(row_index, column, "—", fmt["body"])
+        for column, key, number_format in (
+            (3, "latest", analysis_number),
+            (4, "change", analysis_percent),
+            (5, "mean_daily_change", analysis_percent),
+            (6, "volatility", analysis_percent),
+            (7, "drawdown", analysis_percent),
+            (8, "best_daily_change", analysis_percent),
+            (10, "worst_daily_change", analysis_percent),
+            (12, "lower_tail_5pct", analysis_percent),
+            (13, "average_worst_5pct", analysis_percent),
+        ):
+            value = stat[key]
+            if value is None:
+                fx_analytics.write(row_index, column, "—", fmt["body"])
+            else:
+                fx_analytics.write_number(row_index, column, value, number_format)
+        for column, key in ((9, "best_daily_date"), (11, "worst_daily_date")):
+            value = stat[key]
+            fx_analytics.write(row_index, column, value.strftime("%d-%b-%Y") if value else "—", fmt["body"])
+        fx_analytics.write_number(row_index, 14, stat["daily_observations"], fmt["integer"])
+        fx_analytics.write_number(row_index, 15, stat["observations"], fmt["integer"])
+    if fx_stats:
+        fx_analytics.autofilter(2, 0, 2 + len(fx_stats), len(fx_headers) - 1)
+    fx_analytics.merge_range(
+        6, 0, 7, 15,
+        "Lower-tail note: the 5th percentile and average-worst-5% fields are calculated only when a pair has at least 20 daily changes. They describe the quote series only; they are not portfolio Value at Risk, expected shortfall, or an investor's loss estimate. Annualised volatility uses sample standard deviation of daily percentage changes multiplied by √252.",
+        analysis_note,
+    )
+    fx_analytics.set_row(6, 30)
+    fx_analytics.set_row(7, 30)
+
+    treasury_analysis = workbook.add_worksheet("Treasury Analysis")
+    treasury_analysis.hide_gridlines(2)
+    treasury_analysis.set_tab_color(GOLD)
+    treasury_analysis.freeze_panes(3, 0)
+    treasury_analysis.set_landscape()
+    treasury_analysis.fit_to_pages(1, 0)
+    treasury_analysis.set_column("A:A", 13)
+    treasury_analysis.set_column("B:B", 15)
+    treasury_analysis.set_column("C:D", 15)
+    treasury_analysis.set_column("E:J", 19)
+    treasury_analysis.set_column("K:K", 20)
+    treasury_analysis.set_column("L:M", 23)
+    treasury_analysis.set_column("N:N", 21)
+    treasury_analysis.merge_range("A1:N1", "TREASURY-BILL AUCTION & YIELD ANALYSIS", analysis_title)
+    treasury_analysis.merge_range(
+        "A2:N2",
+        "Tenor histories are kept separate. Change versus the preceding stored observation is not necessarily a week-on-week change.",
+        analysis_note,
+    )
+    treasury_headers = [
+        "Tenor (days)", "Auction records", "First auction", "Latest auction",
+        "Latest accepted yield", "Change vs preceding stored auction",
+        "Mean accepted yield", "Median accepted yield",
+        "Lowest accepted yield", "Highest accepted yield",
+        "Latest price per KES 100*", "Total offered (KES)",
+        "Total accepted (KES)", "Aggregate accepted / offered",
+    ]
+    treasury_analysis.write_row(2, 0, treasury_headers, analysis_header)
+    for row_index, stat in enumerate(tenor_stats, start=3):
+        treasury_analysis.write_number(row_index, 0, stat["tenor"], fmt["integer"])
+        treasury_analysis.write_number(row_index, 1, stat["observations"], fmt["integer"])
+        for column, key in ((2, "first_date"), (3, "latest_date")):
+            value = stat[key]
+            if value:
+                treasury_analysis.write_datetime(row_index, column, datetime.combine(value, time.min), fmt["date"])
+            else:
+                treasury_analysis.write(row_index, column, "—", fmt["body"])
+        for column, key, number_format in (
+            (4, "latest_yield", analysis_yield),
+            (5, "change_vs_previous", analysis_yield),
+            (6, "mean_yield", analysis_yield),
+            (7, "median_yield", analysis_yield),
+            (8, "minimum_yield", analysis_yield),
+            (9, "maximum_yield", analysis_yield),
+            (10, "latest_price", analysis_number),
+            (11, "total_offered", analysis_money),
+            (12, "total_accepted", analysis_money),
+            (13, "accepted_offered_ratio", analysis_percent),
+        ):
+            value = stat[key]
+            treasury_analysis.write_number(row_index, column, value, number_format) if value is not None else treasury_analysis.write(row_index, column, "—", fmt["body"])
+    if tenor_stats:
+        treasury_analysis.autofilter(2, 0, 2 + len(tenor_stats), len(treasury_headers) - 1)
+    treasury_analysis.merge_range(
+        8, 0, 9, 13,
+        "* A price is shown from the CBK record when available; otherwise it is estimated as 100 ÷ (1 + accepted yield × tenor days / 365). Aggregate accepted/offered is the sum of accepted amounts divided by the sum of offered amounts where both are recorded. Neither is a dealer price or a standalone measure of investor demand.",
+        analysis_note,
+    )
+    treasury_analysis.set_row(8, 30)
+    treasury_analysis.set_row(9, 30)
+    treasury_analysis.merge_range("A12:N12", "LATEST MATCHED AUCTION CURVE", fmt["section"])
+    treasury_analysis.write("A13", "Latest auction date", fmt["meta_label"])
+    treasury_analysis.merge_range("B13:D13", latest_bill_date.strftime("%d %b %Y") if latest_bill_date else "No auction data", fmt["meta_value"])
+    treasury_analysis.write("E13", "364-day less 91-day", fmt["meta_label"])
+    if curve_spread is None:
+        treasury_analysis.merge_range("F13:G13", "—", fmt["body"])
+    else:
+        treasury_analysis.merge_range("F13:G13", curve_spread, analysis_yield)
+    treasury_analysis.merge_range("H13:N13", curve_reading, analysis_note)
+    treasury_analysis.merge_range(
+        "A15:N16",
+        "The matched curve uses 91-day and 364-day accepted yields from the same auction date only. It is a snapshot of the short end, not a forecast of future policy rates, secondary-market yields or long-term bond prices.",
+        analysis_note,
+    )
+    treasury_analysis.set_row(14, 25)
+    treasury_analysis.set_row(15, 25)
+
+    key_findings = workbook.add_worksheet("Key Findings")
+    key_findings.hide_gridlines(2)
+    key_findings.set_tab_color(TEAL)
+    key_findings.set_column("A:A", 25)
+    key_findings.set_column("B:B", 75)
+    key_findings.set_column("C:C", 65)
+    key_findings.merge_range("A1:C1", "KEY FINDINGS & INTERPRETATION", analysis_title)
+    key_findings.merge_range(
+        "A2:C2",
+        "Findings describe the observations stored when this workbook was requested. They are not forecasts or investment recommendations.",
+        analysis_note,
+    )
+    key_findings.write_row(2, 0, ["Area", "Observed finding", "How to read it"], analysis_header)
+    comparable_fx = [stat for stat in fx_stats if stat["change"] is not None]
+    largest_quote_change = max(comparable_fx, key=lambda stat: stat["change"]) if comparable_fx else None
+    smallest_quote_change = min(comparable_fx, key=lambda stat: stat["change"]) if comparable_fx else None
+    highest_volatility = max(
+        [stat for stat in fx_stats if stat["volatility"] is not None],
+        key=lambda stat: stat["volatility"],
+        default=None,
+    )
+    tail_ready = [stat for stat in fx_stats if stat["lower_tail_5pct"] is not None]
+    ratios = [stat["accepted_offered_ratio"] for stat in tenor_stats if stat["accepted_offered_ratio"] is not None]
+    findings = [
+        (
+            "Coverage",
+            f"{len(fx)} FX observations across {sum(bool(stat['observations']) for stat in fx_stats)} tracked currency pairs; {len(bills)} Treasury-bill auction observations across {sum(bool(stat['observations']) for stat in tenor_stats)} tracked tenors.",
+            "The coverage dates are stated separately for each series. A missing pair or tenor is not filled with an estimate.",
+        ),
+        (
+            "FX lower-tail sample",
+            f"{len(tail_ready)} of {len(fx_stats)} currency pairs have at least 20 daily changes for the lower-tail statistics.",
+            "The 5th-percentile and average-worst-5% figures are descriptive quote-series measures, not portfolio VaR or investor-level expected shortfall.",
+        ),
+        (
+            "Treasury-bill curve",
+            curve_reading,
+            "The 91-day and 364-day comparison is made only when both observations share the same latest auction date.",
+        ),
+    ]
+    if largest_quote_change:
+        findings.insert(1, (
+            "FX quote movement",
+            f"{largest_quote_change['pair']} recorded the largest cumulative quote change in its stored window ({largest_quote_change['change']:.2%}).",
+            "A rising KES-per-unit quote means more shillings are required for one unit of foreign currency. Pair windows can differ, so the ranking is descriptive rather than a perfectly matched comparison.",
+        ))
+    if smallest_quote_change:
+        findings.insert(2, (
+            "FX relative movement",
+            f"{smallest_quote_change['pair']} recorded the smallest cumulative quote change in its stored window ({smallest_quote_change['change']:.2%}).",
+            "A falling KES-per-unit quote means fewer shillings are required for one unit of foreign currency.",
+        ))
+    if highest_volatility:
+        findings.append((
+            "FX historical variability",
+            f"{highest_volatility['pair']} had the highest annualised sample volatility among the tracked pairs ({highest_volatility['volatility']:.2%}).",
+            "Volatility is backward-looking sample standard deviation of daily quote changes multiplied by √252. It is not a forecast.",
+        ))
+    if ratios:
+        findings.append((
+            "Auction amounts",
+            f"Aggregate accepted/offered amounts are available for {len(ratios)} tenors; the simple average of those tenor-level ratios is {sum(ratios) / len(ratios):.2%}.",
+            "Each tenor ratio is sum of accepted amounts divided by sum of offered amounts where both are published. It is not a bid-cover or investor-demand measure.",
+        ))
+    else:
+        findings.append((
+            "Auction amounts",
+            "An aggregate accepted/offered ratio is not available from the stored sample.",
+            "Both offered and accepted amounts are required. Missing amounts are left missing.",
+        ))
+    fx_age = (retrieved_at.date() - latest_fx_date).days if latest_fx_date else None
+    bill_age = (retrieved_at.date() - latest_bill_date).days if latest_bill_date else None
+    findings.extend([
+        (
+            "Data refresh",
+            f"Latest FX observation age: {fx_age} calendar days; latest Treasury-bill auction age: {bill_age} calendar days. Last recorded refresh status: {str(status).upper()}.",
+            "The date of a market observation is different from the retrieval time. A successful database connection does not imply all source series were refreshed at once.",
+        ),
+        (
+            "Scope boundary",
+            "This workbook analyses stored CBK FX and Treasury-bill observations.",
+            "It does not include user-specific portfolio positions, bond calculator inputs, option positions or backtest settings because those inputs are not persisted in the shared market database.",
+        ),
+        (
+            "Decision-use limitation",
+            "The workbook does not issue buy/sell instructions or forward market forecasts.",
+            "Verify the source publication and account for taxes, transaction costs, settlement terms and personal circumstances before using any figure.",
+        ),
+    ])
+    for row_index, (area, finding, interpretation) in enumerate(findings, start=3):
+        key_findings.write(row_index, 0, area, analysis_label)
+        key_findings.write(row_index, 1, finding, analysis_text)
+        key_findings.write(row_index, 2, interpretation, analysis_text)
+        key_findings.set_row(row_index, 52 if max(len(finding), len(interpretation)) > 150 else 38)
+    key_findings.freeze_panes(3, 0)
+    key_findings.set_landscape()
+    key_findings.fit_to_pages(1, 0)
+
+    dictionary = workbook.add_worksheet("Data Dictionary")
+    dictionary.hide_gridlines(2)
+    dictionary.set_tab_color(MUTED)
+    dictionary.set_column("A:A", 30)
+    dictionary.set_column("B:B", 70)
+    dictionary.set_column("C:C", 65)
+    dictionary.merge_range("A1:C1", "DATA DICTIONARY & MEASURE DEFINITIONS", analysis_title)
+    dictionary.merge_range(
+        "A2:C2",
+        "Definitions apply to this report's stored CBK data. Percentages are stored as decimals and displayed as percentages.",
+        analysis_note,
+    )
+    dictionary.write_row(2, 0, ["Field or measure", "Definition", "Interpretation / caution"], analysis_header)
+    definitions = [
+        ("FX observation", "A stored CBK exchange-rate quote for one currency pair on an observation date.", "KES per one unit of foreign currency; not a bid/ask trading quote."),
+        ("Daily FX quote change", "Current observation divided by the previous stored observation for the same pair, minus one.", "Missing dates are not interpolated and the prior observation need not be the previous calendar day."),
+        ("Cumulative FX quote change", "Latest stored quote divided by the first stored quote in the pair history, minus one.", "Coverage windows can differ across pairs."),
+        ("Annualised historical volatility", "Sample standard deviation of daily percentage quote changes multiplied by √252.", "Backward-looking; not a forecast or guaranteed risk interval."),
+        ("Maximum drawdown in quote level", "Largest decline from a previous peak in the observed KES-per-unit quote level.", "Not a portfolio drawdown or realised investor loss."),
+        ("5th-percentile daily quote change", "Nearest-rank 5th percentile of daily quote changes; displayed only with at least 20 daily observations.", "A lower-tail quote statistic, not portfolio Value at Risk."),
+        ("Average worst 5% daily changes", "Arithmetic mean of the lowest 5% of daily quote changes, using at least 20 daily observations.", "Not a position-level expected shortfall or investor P&L."),
+        ("Accepted Treasury-bill yield", "CBK market-weighted average accepted auction yield stored as a decimal annual rate.", "Auction yield, not a secondary-market yield or a guaranteed reinvestment rate."),
+        ("Price per KES 100", "Stored CBK price where supplied; otherwise 100 divided by (1 + accepted yield × tenor days / 365).", "A calculated price is a model comparison, not a dealer quote or settlement price."),
+        ("Aggregate accepted / offered", "Sum of accepted amounts divided by sum of offered amounts where both figures are recorded.", "Describes published auction amounts; not a measure of bids or investor demand."),
+        ("Percentage-point change", "Difference between two percentage rates, expressed in percentage points.", "For example, 9.0% minus 8.5% is 0.5 percentage points, or 50 basis points."),
+        ("Source URL", "Direct link saved with the imported observation when one is available.", "Open the original CBK publication to confirm context and later corrections."),
+    ]
+    for row_index, (term, definition, caution) in enumerate(definitions, start=3):
+        dictionary.write(row_index, 0, term, analysis_label)
+        dictionary.write(row_index, 1, definition, analysis_text)
+        dictionary.write(row_index, 2, caution, analysis_text)
+        dictionary.set_row(row_index, 40 if max(len(definition), len(caution)) > 115 else 30)
+
     # Source-level FX history
     fx_sheet = workbook.add_worksheet("FX History")
     fx_sheet.hide_gridlines(2)
@@ -471,8 +918,12 @@ def build_workbook(fx, bills, refresh):
         ("Price per KES 100", "Where not already stored from the official result, the report calculates 100 / (1 + accepted yield × tenor days / 365). The result is a transparent model estimate, not a dealer's quote or settlement price."),
         ("Missing values", "Blank, missing, or unavailable records are shown as em dashes. The report does not interpolate missing auction outcomes or forward-fill missing FX observations."),
         ("Refresh status", "The report shows the latest recorded data-refresh status. A successful database connection does not mean that every CBK publication has been refreshed on the same day."),
-        ("Model limitations", "FX risk and return statistics are sample-based. Treasury bill model prices exclude settlement timing, tax, transaction costs and other investor-specific terms. Verify the original CBK publication before relying on a value."),
-        ("Use", "For education, financial research and analysis. This workbook is not investment, legal, tax or accounting advice."),
+        ("Lower-tail quote changes", "The 5th percentile and average worst 5% daily quote changes are shown only after at least 20 daily observations. They describe the FX quote series, not an investor's portfolio Value at Risk or expected shortfall."),
+        ("Auction change", "Change versus the preceding stored auction compares the latest tenor-specific observation with the previous stored observation for that tenor. The elapsed calendar period may vary."),
+        ("Auction amount ratio", "Aggregate accepted/offered equals total accepted divided by total offered over rows where both fields are present. It describes published auction amounts; it is not an investor-demand or bid-cover estimate."),
+        ("Data scope", "The workbook covers stored CBK FX and Treasury-bill observations. User-entered bond valuations, option positions, portfolio allocations and backtest settings are not persisted in the shared market database and are not included."),
+        ("Model limitations", "FX statistics are sample-based. Treasury-bill model prices exclude settlement timing, taxes, transaction costs and investor-specific terms. Calculated measures must not be confused with directly published observations."),
+        ("Use", "For education, financial research and analysis. This workbook is not investment, legal, tax or accounting advice. It does not issue a buy/sell instruction or forward market forecast."),
     ]
     for idx, (label, description) in enumerate(methodology, start=2):
         method.write(idx, 0, label, fmt["meta_label"])
