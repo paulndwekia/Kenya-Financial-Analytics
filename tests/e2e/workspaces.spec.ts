@@ -458,7 +458,7 @@ test("financial report exports have the expected formats and platform heading", 
 
   const [workbook] = await Promise.all([
     page.waitForEvent("download"),
-    page.getByRole("button", { name: "Download formatted Excel" }).click(),
+    page.getByRole("button", { name: "Download detailed Excel report" }).click(),
   ]);
   expect(workbook.suggestedFilename()).toBe("Kenya_Financial_Analytics_Market_Report.xlsx");
 
