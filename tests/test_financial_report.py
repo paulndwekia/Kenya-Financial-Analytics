@@ -1,6 +1,7 @@
 import io
 import unittest
 import zipfile
+import xml.etree.ElementTree as ET
 from datetime import date, datetime, timezone
 
 from api.report import build_workbook
@@ -52,10 +53,19 @@ class FinancialReportTests(unittest.TestCase):
             self.assertIn("FX History", workbook_xml)
             self.assertIn("Treasury Bills", workbook_xml)
             self.assertIn("Methodology", workbook_xml)
+            self.assertIn("Key Findings", workbook_xml)
+            self.assertIn("FX Analytics", workbook_xml)
+            self.assertIn("Treasury Analysis", workbook_xml)
+            self.assertIn("Data Dictionary", workbook_xml)
             shared_strings = archive.read("xl/sharedStrings.xml").decode("utf-8")
             core_properties = archive.read("docProps/core.xml").decode("utf-8")
             self.assertIn("KENYA FINANCIAL ANALYTICS", shared_strings)
             self.assertIn("Market Research Report", core_properties)
+            self.assertIn("FOREIGN-EXCHANGE PERFORMANCE", shared_strings)
+            self.assertIn("TREASURY-BILL AUCTION", shared_strings)
+            self.assertIn("KEY FINDINGS", shared_strings)
+            self.assertIn("DATA DICTIONARY", shared_strings)
+            self.assertIn("at least 20 daily changes", shared_strings)
             chart_files = [name for name in archive.namelist() if name.startswith("xl/charts/chart") and name.endswith(".xml")]
             self.assertGreaterEqual(len(chart_files), 2)
             styles_xml = archive.read("xl/styles.xml").decode("utf-8")
@@ -68,7 +78,23 @@ class FinancialReportTests(unittest.TestCase):
         output = build_workbook(self.fx, self.bills, self.refresh)
         with zipfile.ZipFile(io.BytesIO(output)) as archive:
             shared_strings = archive.read("xl/sharedStrings.xml").decode("utf-8")
-            bills_xml = archive.read("xl/worksheets/sheet4.xml").decode("utf-8")
+            workbook_root = ET.fromstring(archive.read("xl/workbook.xml"))
+            rels_root = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+            main_ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+            office_rel_ns = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
+            package_rel_ns = "{http://schemas.openxmlformats.org/package/2006/relationships}"
+            bill_sheet = next(
+                sheet for sheet in workbook_root.findall(f"{main_ns}sheets/{main_ns}sheet")
+                if sheet.attrib.get("name") == "Treasury Bills"
+            )
+            relationship_id = bill_sheet.attrib[f"{office_rel_ns}id"]
+            relationship = next(
+                rel for rel in rels_root.findall(f"{package_rel_ns}Relationship")
+                if rel.attrib.get("Id") == relationship_id
+            )
+            bill_target = relationship.attrib["Target"].lstrip("/")
+            bill_path = bill_target if bill_target.startswith("xl/") else f"xl/{bill_target}"
+            bills_xml = archive.read(bill_path).decode("utf-8")
             self.assertIn("USD/KES", shared_strings)
             self.assertIn("GBP/KES", shared_strings)
             self.assertIn("EUR/KES", shared_strings)

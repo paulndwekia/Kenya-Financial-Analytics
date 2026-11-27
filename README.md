@@ -33,7 +33,7 @@ The interface brings sixteen focused workspaces into one responsive research env
 | Portfolio | Weighted currency basket using aligned observations |
 | Historical Market Explorer | Filterable historical observations and data export |
 | Research Intelligence | Moving-average trend research |
-| Financial Reports | Source-aware market and auction reporting |
+| Financial Reports | Detailed downloadable workbook with key findings, FX risk and return analysis, tenor-level Treasury-bill auction analysis, full source-linked histories, methodology and a data dictionary |
 
 ## Data architecture
 
